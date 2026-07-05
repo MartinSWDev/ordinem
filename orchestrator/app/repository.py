@@ -75,17 +75,30 @@ async def upsert_ticket_from_jira(
 
 
 async def list_tickets(
-    conn: asyncpg.Connection, status: TicketStatus | None = None
+    conn: asyncpg.Connection,
+    status: TicketStatus | None = None,
+    project_key: str | None = None,
 ) -> list[schemas.TicketRow]:
-    """All tickets, newest first, optionally filtered by status. Backs the
-    dashboard island's list view (GET /tickets)."""
+    """Tickets, newest first, optionally filtered by status and/or Jira project.
+    Backs the dashboard island's list view (GET /tickets)."""
+    clauses: list[str] = []
+    args: list[Any] = []
     if status is not None:
-        rows = await conn.fetch(
-            "select * from tickets where status = $1 order by updated_at desc",
-            str(status),
-        )
-    else:
-        rows = await conn.fetch("select * from tickets order by updated_at desc")
+        args.append(str(status))
+        clauses.append(f"t.status = ${len(args)}")
+    if project_key is not None:
+        args.append(project_key)
+        clauses.append(f"r.jira_project_key = ${len(args)}")
+    where = f"where {' and '.join(clauses)}" if clauses else ""
+    rows = await conn.fetch(
+        f"""
+        select t.* from tickets t
+        join repos r on r.id = t.repo_id
+        {where}
+        order by t.updated_at desc
+        """,
+        *args,
+    )
     return [schemas.TicketRow(**dict(r)) for r in rows]
 
 

@@ -147,3 +147,21 @@ class TicketDetail(BaseModel):
 
     ticket: TicketRow
     subtasks: list[SubtaskRow]
+
+
+class ProjectSyncRequest(BaseModel):
+    """POST /projects/:key/sync — bulk-pull a project's issues from Jira."""
+
+    jql: str | None = Field(
+        None,
+        description=(
+            "Override the default JQL. Default: 'project = <KEY> ORDER BY "
+            "updated DESC'. Read-only — this only ever GETs from Jira."
+        ),
+    )
+
+
+class ProjectSyncResult(BaseModel):
+    project_key: str
+    synced: int
+    tickets: list[TicketRow]

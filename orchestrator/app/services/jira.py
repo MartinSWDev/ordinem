@@ -51,20 +51,30 @@ class JiraClient:
         self._auth = (settings.jira_email, settings.jira_api_token)
         self._ac_field = settings.jira_acceptance_criteria_field or None
 
-    async def fetch_issue(self, jira_key: str) -> dict[str, Any]:
-        """Pull key, summary, description, acceptance criteria, comments and the
-        attachments list. Returns a normalized dict plus the raw payload."""
-        url = f"{self._base}/rest/api/3/issue/{jira_key}"
-        params = {"fields": "*all", "expand": "renderedFields"}
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(url, params=params, auth=self._auth)
-        if resp.status_code == 404:
-            raise JiraError(f"Jira issue {jira_key} not found")
-        if resp.status_code >= 400:
-            raise JiraError(f"Jira API error {resp.status_code} for {jira_key}")
+    # Fields worth pulling for both single-issue and bulk search. Acceptance
+    # criteria is appended when configured.
+    _BASE_FIELDS = [
+        "summary",
+        "description",
+        "status",
+        "issuetype",
+        "project",
+        "updated",
+        "comment",
+        "attachment",
+    ]
 
-        raw = resp.json()
-        fields = raw.get("fields", {})
+    def _search_fields(self) -> list[str]:
+        fields = list(self._BASE_FIELDS)
+        if self._ac_field:
+            fields.append(self._ac_field)
+        return fields
+
+    def _normalize_issue(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Turn a raw Jira issue payload into our normalized ticket dict. Shared
+        by fetch_issue (single) and search_issues (bulk)."""
+        jira_key = raw.get("key", "")
+        fields = raw.get("fields", {}) or {}
 
         acceptance = None
         if self._ac_field:
@@ -83,10 +93,12 @@ class JiraClient:
             for a in (fields.get("attachment") or [])
         ]
 
-        project_key = (fields.get("project") or {}).get("key") or jira_key.split("-")[0]
+        project_key = (fields.get("project") or {}).get("key") or (
+            jira_key.split("-")[0] if "-" in jira_key else jira_key
+        )
 
         return {
-            "jira_key": raw.get("key", jira_key),
+            "jira_key": jira_key,
             "project_key": project_key,
             "title": fields.get("summary") or jira_key,
             "description": _adf_to_text(fields.get("description")).strip() or None,
@@ -95,6 +107,59 @@ class JiraClient:
             "attachments": attachments,
             "raw_jira": raw,
         }
+
+    async def fetch_issue(self, jira_key: str) -> dict[str, Any]:
+        """Pull a single issue by key. Returns a normalized dict + raw payload."""
+        url = f"{self._base}/rest/api/3/issue/{jira_key}"
+        params = {"fields": "*all"}
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(url, params=params, auth=self._auth)
+        if resp.status_code == 404:
+            raise JiraError(f"Jira issue {jira_key} not found")
+        if resp.status_code >= 400:
+            raise JiraError(f"Jira API error {resp.status_code} for {jira_key}")
+        return self._normalize_issue(resp.json())
+
+    async def search_issues(
+        self, jql: str, *, page_size: int = 100, max_issues: int = 5000
+    ) -> list[dict[str, Any]]:
+        """Run a JQL search and return all matching issues, normalized.
+
+        Uses the current POST /rest/api/3/search/jql endpoint (the old
+        /rest/api/3/search was removed Aug 2025). Pagination is token-based via
+        nextPageToken — there is no `total`, so we page until no token comes
+        back, guarded by max_issues.
+        """
+        url = f"{self._base}/rest/api/3/search/jql"
+        fields = self._search_fields()
+        issues: list[dict[str, Any]] = []
+        token: str | None = None
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            while len(issues) < max_issues:
+                body: dict[str, Any] = {
+                    "jql": jql,
+                    "fields": fields,
+                    "maxResults": page_size,
+                }
+                if token:
+                    body["nextPageToken"] = token
+                resp = await client.post(url, json=body, auth=self._auth)
+                if resp.status_code >= 400:
+                    raise JiraError(
+                        f"Jira search failed ({resp.status_code}): {resp.text[:300]}"
+                    )
+                data = resp.json()
+                page = data.get("issues", [])
+                issues.extend(self._normalize_issue(i) for i in page)
+
+                token = data.get("nextPageToken")
+                # End when there's no next token, the API flags the last page,
+                # or a page came back empty (defensive against token loops).
+                if not token or data.get("isLast") or not page:
+                    break
+
+        return issues
 
     def issue_browse_url(self, jira_key: str) -> str:
         """The human-facing Jira URL for the iframe (section 6)."""

@@ -62,12 +62,14 @@ async def ingest_ticket(
 @router.get("", response_model=list[schemas.TicketRow])
 async def list_tickets(
     status: TicketStatus | None = None,
+    project: str | None = None,
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> list[schemas.TicketRow]:
-    """All tickets, newest first, optionally filtered by `?status=`. This is
-    what the dashboard island fetches against its endpoint_base."""
+    """All tickets, newest first, optionally filtered by `?status=` and/or
+    `?project=<JIRA_KEY>`. This is what the dashboard island fetches against its
+    endpoint_base."""
     async with pool.acquire() as conn:
-        return await repository.list_tickets(conn, status)
+        return await repository.list_tickets(conn, status, project)
 
 
 @router.get("/{ticket_id}", response_model=schemas.TicketDetail)

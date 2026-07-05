@@ -9,7 +9,7 @@ from fastapi import FastAPI
 
 from .config import get_settings
 from .db import close_pool, get_pool, run_migrations
-from .routes import commit_plans, tickets
+from .routes import commit_plans, projects, tickets
 
 logger = logging.getLogger("ordinem.orchestrator")
 
@@ -35,6 +35,7 @@ app = FastAPI(
 
 app.include_router(tickets.router)
 app.include_router(commit_plans.router)
+app.include_router(projects.router)
 
 
 @app.get("/health", tags=["meta"])
