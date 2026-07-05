@@ -74,6 +74,21 @@ async def upsert_ticket_from_jira(
     return schemas.TicketRow(**dict(row))
 
 
+async def list_tickets(
+    conn: asyncpg.Connection, status: TicketStatus | None = None
+) -> list[schemas.TicketRow]:
+    """All tickets, newest first, optionally filtered by status. Backs the
+    dashboard island's list view (GET /tickets)."""
+    if status is not None:
+        rows = await conn.fetch(
+            "select * from tickets where status = $1 order by updated_at desc",
+            str(status),
+        )
+    else:
+        rows = await conn.fetch("select * from tickets order by updated_at desc")
+    return [schemas.TicketRow(**dict(r)) for r in rows]
+
+
 async def get_ticket(conn: asyncpg.Connection, ticket_id: UUID) -> schemas.TicketRow | None:
     row = await conn.fetchrow("select * from tickets where id = $1", ticket_id)
     return schemas.TicketRow(**dict(row)) if row else None
