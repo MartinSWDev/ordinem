@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from .state_machine import SubtaskStatus, TicketStatus
 
@@ -31,7 +31,8 @@ class RepoRow(BaseModel):
 
 class TicketRow(BaseModel):
     id: UUID
-    repo_id: UUID
+    repo_id: UUID | None = None
+    jira_project_key: str | None = None
     jira_key: str
     title: str
     description: str | None = None
@@ -41,6 +42,13 @@ class TicketRow(BaseModel):
     status: TicketStatus
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def actionable(self) -> bool:
+        """A ticket can be dispatched to an agent only once its project has a
+        registered repo (branch/worktree/docker all hang off the repo)."""
+        return self.repo_id is not None
 
 
 class SubtaskRow(BaseModel):
@@ -150,7 +158,7 @@ class TicketDetail(BaseModel):
 
 
 class ProjectSyncRequest(BaseModel):
-    """POST /projects/:key/sync — bulk-pull a project's issues from Jira."""
+    """POST /projects/:key/sync — bulk-pull one project's issues from Jira."""
 
     jql: str | None = Field(
         None,
@@ -165,3 +173,33 @@ class ProjectSyncResult(BaseModel):
     project_key: str
     synced: int
     tickets: list[TicketRow]
+
+
+DEFAULT_MY_TICKETS_JQL = (
+    "assignee = currentUser() AND resolution = Unresolved ORDER BY priority ASC"
+)
+
+
+class MyTicketsSyncRequest(BaseModel):
+    """POST /tickets/sync — pull all my tickets across every project."""
+
+    jql: str | None = Field(
+        None,
+        description=(
+            f"Override the default JQL. Default: '{DEFAULT_MY_TICKETS_JQL}'. "
+            "Read-only — this only ever GETs from Jira."
+        ),
+    )
+
+
+class MyTicketsSyncResult(BaseModel):
+    synced: int
+    tickets: list[TicketRow]
+    unregistered_projects: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Project keys that had matching tickets but no registered repo. "
+            "Those tickets are ingested and visible, but not actionable until "
+            "you seed a repos row for them."
+        ),
+    )

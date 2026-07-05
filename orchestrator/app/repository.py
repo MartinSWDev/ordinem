@@ -33,6 +33,12 @@ async def get_repo_by_project_key(
     return schemas.RepoRow(**dict(row)) if row else None
 
 
+async def repo_id_by_project(conn: asyncpg.Connection) -> dict[str, UUID]:
+    """Map every registered project key -> repo id, for bulk ticket linking."""
+    rows = await conn.fetch("select id, jira_project_key from repos")
+    return {r["jira_project_key"]: r["id"] for r in rows}
+
+
 # --------------------------------------------------------------------------- #
 # Tickets
 # --------------------------------------------------------------------------- #
@@ -41,7 +47,8 @@ async def get_repo_by_project_key(
 async def upsert_ticket_from_jira(
     conn: asyncpg.Connection,
     *,
-    repo_id: UUID,
+    repo_id: UUID | None,
+    jira_project_key: str,
     jira_key: str,
     title: str,
     description: str | None,
@@ -49,13 +56,16 @@ async def upsert_ticket_from_jira(
     processing_instructions: str | None,
 ) -> schemas.TicketRow:
     """Insert a new ticket or refresh an existing one by jira_key. A refresh
-    updates the Jira-sourced fields and touches updated_at, but never rewinds
-    status (an in-flight ticket stays in-flight)."""
+    updates the Jira-sourced fields (including repo_id — so a ticket becomes
+    actionable once its project's repo is registered and re-synced) and touches
+    updated_at, but never rewinds status (an in-flight ticket stays in-flight)."""
     row = await conn.fetchrow(
         """
-        insert into tickets (repo_id, jira_key, title, description, raw_jira, processing_instructions)
-        values ($1, $2, $3, $4, $5, $6)
+        insert into tickets (repo_id, jira_project_key, jira_key, title, description, raw_jira, processing_instructions)
+        values ($1, $2, $3, $4, $5, $6, $7)
         on conflict (jira_key) do update set
+          repo_id = excluded.repo_id,
+          jira_project_key = excluded.jira_project_key,
           title = excluded.title,
           description = excluded.description,
           raw_jira = excluded.raw_jira,
@@ -65,6 +75,7 @@ async def upsert_ticket_from_jira(
         returning *
         """,
         repo_id,
+        jira_project_key,
         jira_key,
         title,
         description,
@@ -85,19 +96,15 @@ async def list_tickets(
     args: list[Any] = []
     if status is not None:
         args.append(str(status))
-        clauses.append(f"t.status = ${len(args)}")
+        clauses.append(f"status = ${len(args)}")
     if project_key is not None:
         args.append(project_key)
-        clauses.append(f"r.jira_project_key = ${len(args)}")
+        clauses.append(f"jira_project_key = ${len(args)}")
     where = f"where {' and '.join(clauses)}" if clauses else ""
+    # No join on repos: tickets in unregistered projects (repo_id null) must
+    # still appear — they're visible-but-unactionable.
     rows = await conn.fetch(
-        f"""
-        select t.* from tickets t
-        join repos r on r.id = t.repo_id
-        {where}
-        order by t.updated_at desc
-        """,
-        *args,
+        f"select * from tickets {where} order by updated_at desc", *args
     )
     return [schemas.TicketRow(**dict(r)) for r in rows]
 

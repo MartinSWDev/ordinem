@@ -6,7 +6,7 @@ import asyncio
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from .. import repository, schemas
@@ -38,18 +38,13 @@ async def ingest_ticket(
         raise HTTPException(status_code=502, detail=str(exc))
 
     async with pool.acquire() as conn:
+        # Link to a repo if the project is registered; otherwise ingest anyway
+        # (visible but unactionable until a repos row is seeded and re-synced).
         repo = await repository.get_repo_by_project_key(conn, issue["project_key"])
-        if repo is None:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    f"no repo registered for Jira project '{issue['project_key']}'. "
-                    "Seed the repos table first (section 11)."
-                ),
-            )
         ticket = await repository.upsert_ticket_from_jira(
             conn,
-            repo_id=repo.id,
+            repo_id=repo.id if repo else None,
+            jira_project_key=issue["project_key"],
             jira_key=issue["jira_key"],
             title=issue["title"],
             description=issue["description"],
@@ -57,6 +52,59 @@ async def ingest_ticket(
             processing_instructions=body.processing_instructions,
         )
     return ticket
+
+
+@router.post("/sync", response_model=schemas.MyTicketsSyncResult)
+async def sync_my_tickets(
+    body: schemas.MyTicketsSyncRequest = Body(default=schemas.MyTicketsSyncRequest()),
+    pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
+) -> schemas.MyTicketsSyncResult:
+    """Pull ALL my tickets across every project from Jira and upsert them,
+    grouped-by-project on the client via each ticket's jira_project_key.
+
+    Default JQL is `assignee = currentUser() AND resolution = Unresolved`. This
+    is strictly read-only against Jira. Tickets in projects with no registered
+    repo are still ingested (visible, `actionable=false`) and their project keys
+    are returned in `unregistered_projects`.
+    """
+    try:
+        client = JiraClient(settings)
+    except JiraNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    jql = body.jql or schemas.DEFAULT_MY_TICKETS_JQL
+    try:
+        issues = await client.search_issues(jql)
+    except JiraError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    unregistered: set[str] = set()
+    async with pool.acquire() as conn:
+        repo_map = await repository.repo_id_by_project(conn)
+        async with conn.transaction():
+            for issue in issues:
+                project_key = issue["project_key"]
+                repo_id = repo_map.get(project_key)
+                if repo_id is None:
+                    unregistered.add(project_key)
+                await repository.upsert_ticket_from_jira(
+                    conn,
+                    repo_id=repo_id,
+                    jira_project_key=project_key,
+                    jira_key=issue["jira_key"],
+                    title=issue["title"],
+                    description=issue["description"],
+                    raw_jira=issue["raw_jira"],
+                    processing_instructions=None,
+                )
+        tickets = await repository.list_tickets(conn)
+
+    return schemas.MyTicketsSyncResult(
+        synced=len(issues),
+        tickets=tickets,
+        unregistered_projects=sorted(unregistered),
+    )
 
 
 @router.get("", response_model=list[schemas.TicketRow])

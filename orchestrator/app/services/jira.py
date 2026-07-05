@@ -24,21 +24,27 @@ class JiraError(RuntimeError):
 
 def _adf_to_text(node: Any) -> str:
     """Flatten Atlassian Document Format (description/fields come as ADF JSON)
-    into plain text. Good enough for the structured pane; the iframe (section 6)
-    is there for anything this doesn't render cleanly."""
-    if node is None:
-        return ""
-    if isinstance(node, str):
-        return node
+    into plain text.
+
+    A naive two-level walk drops anything nested in lists, tables, panels, etc.
+    — which is exactly where 'what to do' (acceptance criteria) usually lives.
+    So we recurse through block types (adapted from the proven rocky_ai walk).
+    """
     if isinstance(node, list):
         return "".join(_adf_to_text(n) for n in node)
-    if isinstance(node, dict):
-        if node.get("type") == "text":
-            return node.get("text", "")
-        if node.get("type") in ("hardBreak", "paragraph"):
-            return _adf_to_text(node.get("content")) + "\n"
-        return _adf_to_text(node.get("content"))
-    return ""
+    if not isinstance(node, dict):
+        return ""
+    ntype = node.get("type")
+    if ntype == "text":
+        return node.get("text", "")
+    if ntype == "hardBreak":
+        return "\n"
+    inner = "".join(_adf_to_text(c) for c in node.get("content", []))
+    if ntype == "listItem":
+        return "- " + inner.strip() + "\n"
+    if ntype in ("paragraph", "heading", "tableRow", "codeBlock", "blockquote"):
+        return inner + "\n"
+    return inner
 
 
 class JiraClient:
@@ -57,8 +63,10 @@ class JiraClient:
         "summary",
         "description",
         "status",
+        "priority",
         "issuetype",
         "project",
+        "assignee",
         "updated",
         "comment",
         "attachment",

@@ -51,6 +51,15 @@ async def prepare_dispatch(
             if ticket is None:
                 raise DispatchError("ticket not found")
 
+            # A ticket from an unregistered project (repo_id null) is visible but
+            # not actionable — there's no repo/branch/worktree to dispatch into.
+            if ticket.repo_id is None:
+                raise DispatchError(
+                    f"ticket's project '{ticket.jira_project_key}' has no "
+                    "registered repo; seed a repos row for it and re-sync before "
+                    "dispatching an agent"
+                )
+
             repo_row = await conn.fetchrow(
                 "select * from repos where id = $1", ticket.repo_id
             )

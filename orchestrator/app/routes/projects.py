@@ -62,6 +62,7 @@ async def sync_project(
                 await repository.upsert_ticket_from_jira(
                     conn,
                     repo_id=repo.id,
+                    jira_project_key=project_key,
                     jira_key=issue["jira_key"],
                     title=issue["title"],
                     description=issue["description"],
