@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  :root {
+    --surface: #E7EAF0;
+    --text: #2A2E36;
+    --text-dim: #7E8794;
+    --accent: #F26A1B;
+    --sh-dark: #C4C9D3;
+    --sh-light: #FFFFFF;
+    --sh-dist: 5px; --sh-blur: 11px;
+    --sh-din: 4px; --sh-blin: 8px;
+    --r-lg: 10px; --r-md: 7px; --r-sm: 4px;
+    --shadow-out: var(--sh-dist) var(--sh-dist) var(--sh-blur) var(--sh-dark), calc(var(--sh-dist) * -1) calc(var(--sh-dist) * -1) var(--sh-blur) var(--sh-light);
+    --shadow-in: inset var(--sh-din) var(--sh-din) var(--sh-blin) var(--sh-dark), inset calc(var(--sh-din) * -1) calc(var(--sh-din) * -1) var(--sh-blin) var(--sh-light);
+  }
+  @keyframes ndsPulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  ::selection { background: rgba(242,106,27,.28); }
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="background: var(--surface); color: var(--text); min-height: 100vh; padding: 56px 40px 120px; font-family: 'IBM Plex Sans', sans-serif;">
+  <div style="max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 72px;">
+
+    <!-- ============ COVER ============ -->
+    <header style="display: flex; flex-direction: column; gap: 22px;">
+      <div style="display: flex; align-items: center; gap: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--text-dim);">
+        <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); box-shadow: var(--shadow-out); color: #fff; font-weight: 700; letter-spacing: 0;"><svg viewBox="0 0 120 120" fill="none" style="width:19px;height:19px;color:#fff;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></span>
+        <span>Ordinem · Design System</span>
+        <span style="opacity:.5;">/</span>
+        <span>v1.0</span>
+        <span style="opacity:.5;">/</span>
+        <span>Vue Component Kit</span>
+      </div>
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 58px; line-height: 1.02; letter-spacing: -0.02em; max-width: 900px;">Ordinem — a neumorphic dashboard system</h1>
+      <p style="margin: 0; font-size: 18px; line-height: 1.55; color: var(--text-dim); max-width: 680px;">A soft-UI, mission-control aesthetic for a macOS dashboard app. White surfaces, deep-grey structure, and a single orange accent reserved for what matters. This page is the reference — screen, foundations, components, and a copy-ready build spec — so every Vue component ships consistent.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; padding: 9px 15px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-out); color: var(--text-dim);">Neumorphic · subtle</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; padding: 9px 15px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-out); color: var(--text-dim);">Light theme</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; padding: 9px 15px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-out); color: var(--text-dim);">macOS chrome</span>
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:12px; padding: 9px 15px; border-radius: 999px; background: var(--surface); box-shadow: var(--shadow-out); color: var(--text-dim);">WCAG-minded</span>
+      </div>
+    </header>
+
+    <!-- ============ BRAND MARK / APP ICON ============ -->
+    <section style="display:flex;flex-direction:column;gap:24px;">
+      <div style="display:flex;align-items:baseline;gap:14px;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);">00 · Brand Mark</span>
+        <span style="font-size:13px;color:var(--text-dim);">Ordinem — Latin for “order”. The mark is a lowercase o with a macron: ō.</span>
+      </div>
+
+      <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:34px;display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:center;">
+        <!-- hero lockup -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:20px;">
+          <div style="width:184px;height:184px;border-radius:42px;background:var(--accent);box-shadow:var(--shadow-out), inset 0 2px 6px rgba(255,255,255,.28), inset 0 -6px 12px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff;">
+            <svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:26px;letter-spacing:-0.01em;">Ordinem</div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:var(--text-dim);margin-top:4px;">Order, delivered</div>
+          </div>
+        </div>
+
+        <!-- treatments + construction -->
+        <div style="display:flex;flex-direction:column;gap:22px;">
+          <div>
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:14px;">Approved treatments</div>
+            <div style="display:flex;flex-wrap:wrap;gap:20px;">
+              <!-- dark + orange (primary) -->
+              <div style="text-align:center;">
+                <div style="width:104px;height:104px;border-radius:24px;background:#24272E;box-shadow:var(--shadow-out), inset 0 2px 3px rgba(255,255,255,.06), inset 0 -3px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;color:var(--accent);"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);margin-top:9px;">ALT · DARK</div>
+              </div>
+              <!-- light neumorphic + orange -->
+              <div style="text-align:center;">
+                <div style="width:104px;height:104px;border-radius:24px;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;color:var(--accent);"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);margin-top:9px;">LIGHT UI</div>
+              </div>
+              <!-- orange + white -->
+              <div style="text-align:center;">
+                <div style="width:104px;height:104px;border-radius:24px;background:var(--accent);box-shadow:var(--shadow-out), inset 0 2px 4px rgba(255,255,255,.25), inset 0 -4px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff;"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--accent);margin-top:9px;">APP ICON</div>
+              </div>
+              <!-- light + ink (mono) -->
+              <div style="text-align:center;">
+                <div style="width:104px;height:104px;border-radius:24px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;color:var(--text);"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);margin-top:9px;">MONO / DEBOSS</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- construction / sizes -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-in);padding:16px;">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:14px;">Scales to</div>
+              <div style="display:flex;align-items:flex-end;gap:16px;">
+                <div style="width:64px;height:64px;border-radius:15px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="width:40px;height:40px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="width:28px;height:28px;border-radius:7px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;"><svg viewBox="0 0 120 120" fill="none" style="width:58%;height:58%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+                <div style="width:18px;height:18px;border-radius:5px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;"><svg viewBox="0 0 120 120" fill="none" style="width:60%;height:60%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+              </div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim);margin-top:12px;">128 · 64 · 32 · 16 px</div>
+            </div>
+            <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-in);padding:16px;font-size:12px;line-height:1.6;color:var(--text-dim);">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px;">Rules</div>
+              macron = 22% of glyph width above the o · squircle radius 23% · glyph fills ~56% of tile · keep ≥18% clear margin · never recolor the mark outside the four treatments.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- dock preview -->
+      <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:26px;display:flex;flex-direction:column;gap:16px;align-items:center;">
+        <div style="align-self:flex-start;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);">In the macOS dock</div>
+        <div style="display:flex;align-items:flex-end;gap:14px;padding:12px 18px;border-radius:22px;background:rgba(255,255,255,.55);box-shadow:var(--shadow-out);backdrop-filter:blur(8px);">
+          <div style="width:52px;height:52px;border-radius:13px;background:var(--surface);box-shadow:var(--shadow-out);"></div>
+          <div style="width:52px;height:52px;border-radius:13px;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></div>
+          <!-- our icon, lifted -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:8px;transform:translateY(-8px);">
+            <div style="width:62px;height:62px;border-radius:15px;background:var(--accent);box-shadow:var(--shadow-out), inset 0 2px 4px rgba(255,255,255,.28), inset 0 -4px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;color:#fff;"><svg viewBox="0 0 120 120" fill="none" style="width:56%;height:56%;"><rect x="38" y="26" width="44" height="9" rx="4.5" fill="currentColor"/><circle cx="60" cy="73" r="24.5" stroke="currentColor" stroke-width="11"/></svg></div>
+            <div style="width:5px;height:5px;border-radius:50%;background:var(--accent);"></div>
+          </div>
+          <div style="width:52px;height:52px;border-radius:13px;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/></svg></div>
+          <div style="width:52px;height:52px;border-radius:13px;background:var(--surface);box-shadow:var(--shadow-out);"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HERO SCREEN ============ -->
+    <section style="display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; align-items: baseline; gap: 14px;">
+        <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent);">01 · Reference Screen</span>
+        <span style="font-size: 13px; color: var(--text-dim);">The Agent Pipeline home — sidebar, islands, notifications.</span>
+      </div>
+
+      <!-- macOS window -->
+      <div style="background: var(--surface); border-radius: 24px; box-shadow: var(--shadow-out); overflow: hidden;">
+        <!-- title bar -->
+        <div style="display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 46px; border-bottom: 1px solid rgba(0,0,0,0.04);">
+          <div style="display: flex; gap: 8px;">
+            <span style="width:12px;height:12px;border-radius:50%;background:#FF5F57;"></span>
+            <span style="width:12px;height:12px;border-radius:50%;background:#FEBC2E;"></span>
+            <span style="width:12px;height:12px;border-radius:50%;background:#28C840;"></span>
+          </div>
+          <div style="flex:1; text-align:center; font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.12em; color:var(--text-dim);">ORDINEM · AGENT PIPELINE</div>
+          <div style="width:52px; display:flex; justify-content:flex-end; gap:6px; color:var(--text-dim);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+          </div>
+        </div>
+
+        <!-- window body -->
+        <div style="display: grid; grid-template-columns: 70px 1fr 272px; min-height: 636px;">
+
+          <!-- SIDEBAR -->
+          <nav style="display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px 0; border-right: 1px solid rgba(0,0,0,0.04);">
+            <div style="width:38px;height:38px;border-radius:12px;background:var(--accent);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;">N</div>
+            <div style="width:24px;height:1px;background:rgba(0,0,0,.07);margin:2px 0;"></div>
+            <!-- active -->
+            <button style="width:44px;height:44px;border:none;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--accent);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>
+            </button>
+            <button style="width:44px;height:44px;border:none;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 6H14a3 3 0 0 1 3 3v.5M8.5 18H14a3 3 0 0 0 3-3v-.5"/></svg>
+            </button>
+            <button style="width:44px;height:44px;border:none;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>
+            </button>
+            <button style="width:44px;height:44px;border:none;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l4 4 12-12"/><path d="M4 19h16" opacity=".4"/></svg>
+            </button>
+            <div style="flex:1;"></div>
+            <button style="width:44px;height:44px;border:none;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>
+            </button>
+            <div style="width:34px;height:34px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-dim);">JD</div>
+          </nav>
+
+          <!-- MAIN -->
+          <div style="padding: 24px 26px; display: flex; flex-direction: column; gap: 20px;">
+            <!-- topbar -->
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <div style="flex:1;">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--text-dim);">Sat · Jul 05 · 2026</div>
+                <h2 style="margin:2px 0 0;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:26px;letter-spacing:-0.01em;">Good morning, June</h2>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:0 14px;height:40px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--text-dim);min-width:190px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span style="font-size:13px;">Search tickets…</span>
+              </div>
+              <button style="display:flex;align-items:center;gap:8px;height:40px;padding:0 18px;border:none;border-radius:12px;background:var(--accent);color:#fff;box-shadow:var(--shadow-out);font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+                New Task
+              </button>
+            </div>
+
+            <!-- PIPELINE ISLAND -->
+            <div style="background: var(--surface); border-radius: var(--r-lg); box-shadow: var(--shadow-out); padding: 20px;">
+              <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px;">
+                <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Agent Pipeline</h3>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:5px 10px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--accent);">
+                  <span style="width:6px;height:6px;border-radius:50%;background:var(--accent);animation:ndsPulse 1.6s infinite;"></span>3 RUNNING
+                </span>
+                <div style="flex:1;"></div>
+                <div style="display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-in);font-size:12px;font-weight:500;">
+                  <span style="padding:5px 12px;border-radius:9px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text);">Active</span>
+                  <span style="padding:5px 12px;border-radius:9px;color:var(--text-dim);">Queued</span>
+                  <span style="padding:5px 12px;border-radius:9px;color:var(--text-dim);">Done</span>
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;">
+                <!-- col template -->
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);padding:0 2px;">
+                    <span>Jira Backlog</span><span>4</span>
+                  </div>
+                  <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);">PROJ-2481</div>
+                    <div style="font-size:13px;font-weight:500;line-height:1.3;">Fix token refresh on OAuth callback</div>
+                    <div style="display:flex;align-items:center;gap:6px;"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:3px 7px;border-radius:6px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--text-dim);">BUG</span><span style="width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);margin-left:auto;"></span></div>
+                  </div>
+                  <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;flex-direction:column;gap:8px;opacity:.72;">
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">PROJ-2490</div>
+                    <div style="font-size:13px;font-weight:500;line-height:1.3;">Sidebar collapse animation jitter</div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);padding:0 2px;">
+                    <span>Task Draft</span><span>1</span>
+                  </div>
+                  <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);">PROJ-2477</div>
+                    <div style="font-size:13px;font-weight:500;line-height:1.3;">Rate-limit the sync worker to 5 rps</div>
+                    <div style="height:5px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);overflow:hidden;"><div style="width:60%;height:100%;background:var(--accent);"></div></div>
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);">Drafting acceptance criteria…</div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);padding:0 2px;">
+                    <span>Claude Agent</span><span>2</span>
+                  </div>
+                  <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;flex-direction:column;gap:8px;border:1px solid rgba(242,106,27,.18);">
+                    <div style="display:flex;align-items:center;gap:6px;"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent);animation:ndsPulse 1.4s infinite;"></span><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--accent);">PROJ-2455</div></div>
+                    <div style="font-size:13px;font-weight:500;line-height:1.3;">Migrate settings store to Pinia</div>
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);">agent · editing 6 files</div>
+                  </div>
+                  <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;flex-direction:column;gap:8px;opacity:.85;">
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">PROJ-2460</div>
+                    <div style="font-size:13px;font-weight:500;line-height:1.3;">Add dark-mode tokens to theme</div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);padding:0 2px;">
+                    <span>Review · Commit</span><span>1</span>
+                  </div>
+                  <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;flex-direction:column;gap:8px;">
+                    <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">PROJ-2431</div>
+                    <div style="font-size:13px;font-weight:500;line-height:1.3;">Debounce search input by 250ms</div>
+                    <div style="display:flex;align-items:center;gap:6px;"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:3px 7px;border-radius:6px;background:var(--surface);box-shadow:var(--shadow-in);color:#2E9E5B;">+42 −8</span><button style="margin-left:auto;border:none;font-family:'IBM Plex Sans',sans-serif;font-size:11px;font-weight:600;color:#fff;background:var(--accent);box-shadow:var(--shadow-out);border-radius:8px;padding:5px 10px;cursor:pointer;">Commit</button></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- WIDGET ROW -->
+            <div style="display:grid;grid-template-columns:1.15fr 1fr .9fr;gap:16px;">
+              <!-- Calendar -->
+              <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><h4 style="margin:0;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;">Today</h4><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);">3 events</span></div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div style="display:flex;gap:10px;align-items:center;"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);width:42px;">09:30</span><div style="width:3px;height:26px;border-radius:2px;background:var(--accent);"></div><div style="font-size:12.5px;">Standup · Platform</div></div>
+                  <div style="display:flex;gap:10px;align-items:center;"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);width:42px;">13:00</span><div style="width:3px;height:26px;border-radius:2px;background:rgba(0,0,0,.14);"></div><div style="font-size:12.5px;">Sprint review</div></div>
+                  <div style="display:flex;gap:10px;align-items:center;"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);width:42px;">16:30</span><div style="width:3px;height:26px;border-radius:2px;background:rgba(0,0,0,.14);"></div><div style="font-size:12.5px;">1:1 with Priya</div></div>
+                </div>
+              </div>
+              <!-- Todo -->
+              <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><h4 style="margin:0;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;">To-do</h4><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);">2 / 5</span></div>
+                <div style="display:flex;flex-direction:column;gap:11px;">
+                  <div style="display:flex;gap:10px;align-items:center;"><span style="width:19px;height:19px;border-radius:7px;background:var(--accent);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><path d="M4 12l5 5L20 6"/></svg></span><span style="font-size:12.5px;color:var(--text-dim);text-decoration:line-through;">Triage inbound bugs</span></div>
+                  <div style="display:flex;gap:10px;align-items:center;"><span style="width:19px;height:19px;border-radius:7px;background:var(--surface);box-shadow:var(--shadow-in);"></span><span style="font-size:12.5px;">Review PROJ-2431 diff</span></div>
+                  <div style="display:flex;gap:10px;align-items:center;"><span style="width:19px;height:19px;border-radius:7px;background:var(--surface);box-shadow:var(--shadow-in);"></span><span style="font-size:12.5px;">Write sprint notes</span></div>
+                </div>
+              </div>
+              <!-- Dial -->
+              <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);align-self:flex-start;">Velocity</div>
+                <div style="position:relative;width:96px;height:96px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;">
+                  <div style="position:absolute;inset:12px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+                    <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:24px;color:var(--accent);">87</span>
+                    <span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--text-dim);">pts / sprint</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- NOTIFICATIONS -->
+          <aside style="padding: 20px 18px; border-left: 1px solid rgba(0,0,0,0.04); display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;">Updates</h3>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;border-radius:999px;background:var(--accent);color:#fff;box-shadow:var(--shadow-out);">4</span>
+              <div style="flex:1;"></div>
+              <span style="color:var(--text-dim);"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.5 21a2 2 0 0 1-3 0"/></svg></span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+              <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;gap:10px;">
+                <span style="width:26px;height:26px;flex:none;border-radius:8px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;color:var(--accent);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12l5 5L20 6"/></svg></span>
+                <div><div style="font-size:12.5px;line-height:1.35;">Agent finished <b>PROJ-2431</b> — ready to commit</div><div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);margin-top:3px;">2m ago</div></div>
+              </div>
+              <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;gap:10px;">
+                <span style="width:26px;height:26px;flex:none;border-radius:8px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 6H14a3 3 0 0 1 3 3v.5M8.5 18H14a3 3 0 0 0 3-3v-.5"/></svg></span>
+                <div><div style="font-size:12.5px;line-height:1.35;">New Jira ticket synced to backlog</div><div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);margin-top:3px;">18m ago</div></div>
+              </div>
+              <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-out);padding:12px;display:flex;gap:10px;">
+                <span style="width:26px;height:26px;flex:none;border-radius:8px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;color:var(--text-dim);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg></span>
+                <div><div style="font-size:12.5px;line-height:1.35;">Sprint review in <b>3 hours</b></div><div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--text-dim);margin-top:3px;">1h ago</div></div>
+              </div>
+            </div>
+            <div style="flex:1;"></div>
+            <!-- system status -->
+            <div style="background:var(--surface);border-radius:var(--r-md);box-shadow:var(--shadow-in);padding:12px;">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;">Sys · Status</div>
+              <div style="display:flex;flex-direction:column;gap:7px;">
+                <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;"><span style="width:7px;height:7px;border-radius:50%;background:#2E9E5B;"></span>Jira API<span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;color:var(--text-dim);">42ms</span></div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;"><span style="width:7px;height:7px;border-radius:50%;background:#2E9E5B;"></span>Claude<span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;color:var(--text-dim);">ok</span></div>
+                <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);"></span>Git sync<span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;color:var(--text-dim);">busy</span></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FOUNDATIONS ============ -->
+    <section style="display:flex;flex-direction:column;gap:28px;">
+      <div style="display:flex;align-items:baseline;gap:14px;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);">02 · Foundations</span>
+        <span style="font-size:13px;color:var(--text-dim);">The atoms every component is built from.</span>
+      </div>
+
+      <!-- palette -->
+      <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:26px;">
+        <h3 style="margin:0 0 4px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:18px;">Palette</h3>
+        <p style="margin:0 0 20px;font-size:13.5px;color:var(--text-dim);">White surface, deep-grey structure, one orange. Orange is never decorative — it marks the primary action or the live/active state, nothing else.</p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;">
+          <div style="border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-out);"><div style="height:64px;background:#E7EAF0;"></div><div style="padding:10px 12px;"><div style="font-size:12.5px;font-weight:600;">Surface</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">#E7EAF0</div></div></div>
+          <div style="border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-out);"><div style="height:64px;background:#F26A1B;"></div><div style="padding:10px 12px;"><div style="font-size:12.5px;font-weight:600;">Accent · Orange</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">#F26A1B</div></div></div>
+          <div style="border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-out);"><div style="height:64px;background:#2A2E36;"></div><div style="padding:10px 12px;"><div style="font-size:12.5px;font-weight:600;">Ink · Dark grey</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">#2A2E36</div></div></div>
+          <div style="border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-out);"><div style="height:64px;background:#7E8794;"></div><div style="padding:10px 12px;"><div style="font-size:12.5px;font-weight:600;">Muted</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">#7E8794</div></div></div>
+          <div style="border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-out);"><div style="height:64px;background:#24272E;"></div><div style="padding:10px 12px;"><div style="font-size:12.5px;font-weight:600;">Dark surface</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">#24272E</div></div></div>
+          <div style="border-radius:var(--r-md);overflow:hidden;box-shadow:var(--shadow-out);"><div style="height:64px;background:#2E9E5B;"></div><div style="padding:10px 12px;"><div style="font-size:12.5px;font-weight:600;">Success</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);">#2E9E5B</div></div></div>
+        </div>
+      </div>
+
+      <!-- type + elevation two-up -->
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:20px;">
+        <!-- typography -->
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:26px;">
+          <h3 style="margin:0 0 18px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:18px;">Typography</h3>
+          <div style="display:flex;flex-direction:column;gap:18px;">
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Display · Space Grotesk</div>
+              <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:34px;letter-spacing:-0.02em;">Mission Control</div>
+            </div>
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Body · IBM Plex Sans</div>
+              <div style="font-size:15px;line-height:1.55;">The workhorse for UI copy, labels and controls. Set at 13–15px, weight 400–600.</div>
+            </div>
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px;">Data · IBM Plex Mono</div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:15px;">PROJ-2481 · 42ms · v1.0.3</div>
+            </div>
+          </div>
+        </div>
+        <!-- elevation -->
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:26px;">
+          <h3 style="margin:0 0 6px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:18px;">Elevation</h3>
+          <p style="margin:0 0 18px;font-size:12.5px;color:var(--text-dim);">Two tools only: <b>raised</b> for anything interactive or grouped, <b>inset</b> for wells, inputs and pressed states.</p>
+          <div style="display:flex;gap:14px;">
+            <div style="flex:1;text-align:center;"><div style="height:74px;border-radius:var(--r-md);background:var(--surface);box-shadow:var(--shadow-out);"></div><div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);margin-top:8px;">RAISED</div></div>
+            <div style="flex:1;text-align:center;"><div style="height:74px;border-radius:var(--r-md);background:var(--surface);box-shadow:var(--shadow-in);"></div><div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);margin-top:8px;">INSET</div></div>
+          </div>
+          <div style="margin-top:16px;padding:12px;border-radius:var(--r-sm);background:var(--surface);box-shadow:var(--shadow-in);font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.6;color:var(--text-dim);">out: 5·5·11 dark / −5·−5·11 light<br>in&nbsp;: inset 4·4·8 dark / −4·−4·8 light</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ COMPONENTS ============ -->
+    <section style="display:flex;flex-direction:column;gap:22px;">
+      <div style="display:flex;align-items:baseline;gap:14px;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);">03 · Components</span>
+        <span style="font-size:13px;color:var(--text-dim);">The source of truth for the Vue kit. Light theme (dark deferred).</span>
+      </div>
+
+      <!-- BUTTONS -->
+      <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+        <h3 style="margin:0 0 16px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Buttons &amp; Toggles</h3>
+        <div>
+          <!-- light -->
+          <div style="border-radius:var(--r-md);padding:22px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;flex-wrap:wrap;align-items:center;gap:14px;">
+            <span style="position:absolute;font-family:'IBM Plex Mono',monospace;font-size:9px;"></span>
+            <button style="border:none;height:38px;padding:0 18px;border-radius:12px;background:var(--accent);color:#fff;box-shadow:var(--shadow-out);font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;">Primary</button>
+            <button style="border:none;height:38px;padding:0 18px;border-radius:12px;background:var(--surface);color:var(--text);box-shadow:var(--shadow-out);font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;">Secondary</button>
+            <button style="border:none;height:38px;padding:0 18px;border-radius:12px;background:var(--surface);color:var(--text-dim);box-shadow:var(--shadow-in);font-family:'IBM Plex Sans',sans-serif;font-weight:600;font-size:13px;cursor:pointer;">Pressed</button>
+            <button style="border:none;width:38px;height:38px;border-radius:12px;background:var(--surface);color:var(--text);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;cursor:pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg></button>
+            <div style="width:46px;height:26px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;padding:0 3px;"><div style="width:20px;height:20px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);"></div></div>
+            <div style="width:46px;height:26px;border-radius:999px;background:var(--accent);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:flex-end;padding:0 3px;"><div style="width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INPUTS + TABS -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+          <h3 style="margin:0 0 16px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Form inputs</h3>
+          <div style="display:flex;flex-direction:column;gap:14px;">
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:7px;">Ticket title</div>
+              <div style="height:42px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;padding:0 14px;font-size:13.5px;">Rate-limit the sync worker</div>
+            </div>
+            <div>
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:7px;">Assignee · focused</div>
+              <div style="height:42px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;padding:0 14px;font-size:13.5px;border:1.5px solid var(--accent);">Claude Agent<span style="width:7px;height:16px;background:var(--accent);margin-left:2px;animation:ndsPulse 1s infinite;"></span></div>
+            </div>
+            <div style="display:flex;gap:12px;">
+              <div style="flex:1;"><div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:7px;">Priority</div><div style="height:42px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:space-between;padding:0 14px;font-size:13.5px;color:var(--text-dim);">Select…<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></div></div>
+              <div><div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:7px;">Est.</div><div style="width:78px;height:42px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-size:14px;">5</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+          <h3 style="margin:0 0 16px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Tabs &amp; segmented</h3>
+          <div style="display:flex;flex-direction:column;gap:18px;">
+            <div style="display:flex;gap:4px;padding:5px;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-in);">
+              <span style="flex:1;text-align:center;padding:8px;border-radius:10px;background:var(--surface);box-shadow:var(--shadow-out);font-size:13px;font-weight:600;">Board</span>
+              <span style="flex:1;text-align:center;padding:8px;border-radius:10px;font-size:13px;color:var(--text-dim);">List</span>
+              <span style="flex:1;text-align:center;padding:8px;border-radius:10px;font-size:13px;color:var(--text-dim);">Timeline</span>
+            </div>
+            <div style="display:flex;gap:22px;border-bottom:1px solid rgba(0,0,0,.06);padding-bottom:0;">
+              <span style="padding-bottom:10px;font-size:13.5px;font-weight:600;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-1px;">Active</span>
+              <span style="padding-bottom:10px;font-size:13.5px;color:var(--text-dim);">Queued</span>
+              <span style="padding-bottom:10px;font-size:13.5px;color:var(--text-dim);">Done</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 13px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text-dim);">All 8</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 13px;border-radius:999px;background:var(--accent);color:#fff;box-shadow:var(--shadow-out);">Bugs 3</span>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 13px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--text-dim);">Feat 5</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDERS/DIALS + BADGES -->
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:20px;">
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+          <h3 style="margin:0 0 18px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Sliders, knobs &amp; dials</h3>
+          <div style="display:flex;flex-direction:column;gap:22px;">
+            <div>
+              <div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);margin-bottom:10px;"><span>SYNC RATE</span><span style="color:var(--accent);">5 rps</span></div>
+              <div style="height:14px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;position:relative;">
+                <div style="width:55%;height:6px;margin-left:4px;border-radius:999px;background:var(--accent);"></div>
+                <div style="position:absolute;left:52%;width:24px;height:24px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);"></div>
+              </div>
+            </div>
+            <div style="display:flex;gap:26px;align-items:center;">
+              <div style="text-align:center;">
+                <div style="position:relative;width:88px;height:88px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;">
+                  <div style="position:absolute;inset:14px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-in);"></div>
+                  <div style="position:absolute;top:12px;left:50%;width:3px;height:20px;border-radius:2px;background:var(--accent);transform:translateX(-50%) rotate(38deg);transform-origin:bottom center;"></div>
+                </div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:9px;">KNOB</div>
+              </div>
+              <div style="text-align:center;">
+                <div style="position:relative;width:88px;height:88px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;">
+                  <div style="position:absolute;inset:12px;border-radius:50%;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:20px;color:var(--accent);">72%</div>
+                </div>
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);margin-top:9px;">RADIAL</div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:9px;">
+                <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--text-dim);">CONCURRENCY</div>
+                <div style="display:flex;gap:6px;">
+                  <div style="flex:1;height:34px;border-radius:9px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;align-items:center;justify-content:center;color:var(--text-dim);">−</div>
+                  <div style="width:48px;height:34px;border-radius:9px;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;font-weight:600;">3</div>
+                  <div style="flex:1;height:34px;border-radius:9px;background:var(--surface);box-shadow:var(--shadow-out);display:flex;align-items:center;justify-content:center;color:var(--accent);font-weight:600;">+</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+          <h3 style="margin:0 0 18px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Status &amp; indicators</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:11px;">
+            <span style="display:inline-flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 12px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--accent);"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);animation:ndsPulse 1.5s infinite;"></span>RUNNING</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 12px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);color:#2E9E5B;"><span style="width:7px;height:7px;border-radius:50%;background:#2E9E5B;"></span>PASSED</span>
+            <span style="display:inline-flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:7px 12px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--text-dim);"><span style="width:7px;height:7px;border-radius:50%;background:var(--text-dim);"></span>QUEUED</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:6px 10px;border-radius:6px;background:var(--surface);box-shadow:var(--shadow-in);color:var(--text-dim);">BUG</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:6px 10px;border-radius:6px;background:var(--surface);box-shadow:var(--shadow-in);color:#2E9E5B;">+42 −8</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:6px 10px;border-radius:999px;background:var(--accent);color:#fff;box-shadow:var(--shadow-out);">4</span>
+          </div>
+          <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px;">
+            <div><div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:7px;"><span>SPRINT PROGRESS</span><span>68%</span></div><div style="height:9px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);overflow:hidden;"><div style="width:68%;height:100%;background:var(--accent);"></div></div></div>
+            <div><div style="display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-dim);margin-bottom:7px;"><span>AGENT LOAD</span><span>3 / 4</span></div><div style="height:9px;border-radius:999px;background:var(--surface);box-shadow:var(--shadow-in);overflow:hidden;"><div style="width:75%;height:100%;background:var(--text);opacity:.55;"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIDEBAR / NAV -->
+      <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+        <h3 style="margin:0 0 16px;font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;">Sidebar nav</h3>
+        <div>
+          <!-- light expanded -->
+          <div style="border-radius:var(--r-md);padding:16px;background:var(--surface);box-shadow:var(--shadow-in);display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-out);color:var(--accent);font-size:13.5px;font-weight:600;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Home</div>
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;color:var(--text-dim);font-size:13.5px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.5 6H14a3 3 0 0 1 3 3v.5M8.5 18H14a3 3 0 0 0 3-3v-.5"/></svg>Pipeline</div>
+            <div style="display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:12px;color:var(--text-dim);font-size:13.5px;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>Calendar</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ BUILD SPEC ============ -->
+    <section style="display:flex;flex-direction:column;gap:22px;">
+      <div style="display:flex;align-items:baseline;gap:14px;">
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);">04 · Build Spec</span>
+        <span style="font-size:13px;color:var(--text-dim);">Point every Vue component here. Copy the prompt below.</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#2E9E5B;margin-bottom:12px;">✓ Always</div>
+          <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;">
+            <li>Element background = its container background (<code style="font-family:'IBM Plex Mono',monospace;">var(--surface)</code>). Neumorphism only reads when they match.</li>
+            <li>Raised for interactive/grouped; inset for wells, inputs and pressed.</li>
+            <li>Orange = primary action or live/active state only.</li>
+            <li>Depth from shadow, hierarchy from spacing &amp; type — not borders.</li>
+            <li>Icons: 1.5–2px stroke, line style, currentColor.</li>
+            <li>Every color/shadow/radius via a CSS var — never hard-coded.</li>
+          </ul>
+        </div>
+        <div style="background:var(--surface);border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:24px;">
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;">✕ Never</div>
+          <ul style="margin:0;padding-left:18px;font-size:13.5px;line-height:1.7;">
+            <li>Hard drop-shadows, pure black, or heavy borders as separators.</li>
+            <li>More than one accent hue, or orange used decoratively.</li>
+            <li>Elements floating on a background that isn't the surface color.</li>
+            <li>Gradients, glassmorphism, or filled colored cards.</li>
+            <li>Rely on shadow alone for state — pair with color/icon for a11y.</li>
+            <li>Nesting raised-inside-raised too deep; keep to 2 elevation levels.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- prompt block -->
+      <div style="background:#20232A;border-radius:var(--r-lg);box-shadow:var(--shadow-out);padding:0;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid rgba(255,255,255,.06);">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#8A919C;">Component build prompt</span>
+          <div style="flex:1;"></div>
+          <button onClick="{{ copyPrompt }}" style="border:none;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:#fff;background:var(--accent);border-radius:8px;padding:6px 14px;cursor:pointer;">{{ copyLabel }}</button>
+        </div>
+        <pre ref="{{ promptRef }}" style="margin:0;padding:20px 22px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.75;color:#C7CCD4;white-space:pre-wrap;overflow-x:auto;">Build a Vue 3 component for the Ordinem dashboard — a neumorphic, mission-control ("NASA science") macOS app. Follow these rules exactly.
+
+STYLE
+- Soft-UI / neumorphism, SUBTLE depth. Shadow, not borders, creates elevation.
+- The component's background MUST equal its parent's (--surface). This is what makes neumorphism work.
+- Two elevation tools only:
+    raised  → box-shadow: var(--shadow-out)   (interactive / grouped)
+    inset   → box-shadow: var(--shadow-in)     (wells, inputs, pressed, tracks)
+- Never exceed two nested elevation levels.
+
+TOKENS (theme via CSS custom properties; light theme — dark deferred)
+  --surface:  #E7EAF0  (light)   /  #24272E (dark)
+  --text:     #2A2E36           /  #E7E9ED
+  --text-dim: #7E8794           /  #8A919C
+  --accent:   #F26A1B  (both modes)
+  --success:  #2E9E5B
+  --sh-dark:  #C4C9D3           /  #131519
+  --sh-light: #FFFFFF           /  #2C3036
+  --sh-dist: 5px; --sh-blur: 11px; --sh-din: 4px; --sh-blin: 8px;
+  --shadow-out: var(--sh-dist) var(--sh-dist) var(--sh-blur) var(--sh-dark),
+                calc(var(--sh-dist)*-1) calc(var(--sh-dist)*-1) var(--sh-blur) var(--sh-light);
+  --shadow-in:  inset var(--sh-din) var(--sh-din) var(--sh-blin) var(--sh-dark),
+                inset calc(var(--sh-din)*-1) calc(var(--sh-din)*-1) var(--sh-blin) var(--sh-light);
+  radii:  --r-lg 10px (cards) · --r-md 7px (controls) · --r-sm 4px  (SHARP corners)
+  app icon: solid --accent squircle (23% radius) + white ō glyph @ 56%
+  space:  4 / 8 / 12 / 16 / 24 / 32
+
+TYPE
+  Display : 'Space Grotesk', 600–700, letter-spacing -0.02em (titles)
+  Body/UI : 'IBM Plex Sans', 400–600, 13–15px
+  Data    : 'IBM Plex Mono', uppercase micro-labels, letter-spacing .14em, 10–11px
+
+COLOR
+- Orange = primary action OR live/active state ONLY. Everything else is grey ink on surface.
+- Success green only for passing/added states.
+
+INTERACTION
+- hover: lift slightly (increase --sh-dist ~1px) ; active/pressed: swap to var(--shadow-in).
+- focus: 1.5px solid var(--accent) ring; keep the inset well.
+- Transition box-shadow & transform 160ms ease.
+
+A11Y
+- Never signal state with shadow alone — pair with color + icon/label.
+- Maintain 4.5:1 text contrast; --text-dim only for secondary text ≥12px.
+
+DELIVER
+- A single-file Vue 3 SFC, scoped styles, props typed, tokens read from CSS vars (never hard-coded).
+- Emit standard events; expose size/variant via props (variant: primary|secondary, size: sm|md).</pre>
+      </div>
+    </section>
+
+    <footer style="text-align:center;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-dim);padding-top:20px;">Ordinem Design System · v1.0 · Tweak accent, depth &amp; corners in the panel →</footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:900},&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#F26A1B&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;depth&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;subtle&quot;,&quot;options&quot;:[&quot;subtle&quot;,&quot;medium&quot;,&quot;heavy&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;corner&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;sharp&quot;,&quot;options&quot;:[&quot;soft&quot;,&quot;sharp&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  state = { copyLabel: 'Copy' };
+
+  applyTweaks() {
+    const r = document.documentElement;
+    const accent = this.props.accent || '#F26A1B';
+    r.style.setProperty('--accent', accent);
+
+    const depth = this.props.depth || 'subtle';
+    const dmap = {
+      subtle: { dist: 5, blur: 11, din: 4, blin: 8 },
+      medium: { dist: 7, blur: 15, din: 6, blin: 12 },
+      heavy:  { dist: 10, blur: 20, din: 8, blin: 16 },
+    };
+    const d = dmap[depth] || dmap.subtle;
+    r.style.setProperty('--sh-dist', d.dist + 'px');
+    r.style.setProperty('--sh-blur', d.blur + 'px');
+    r.style.setProperty('--sh-din', d.din + 'px');
+    r.style.setProperty('--sh-blin', d.blin + 'px');
+
+    const corner = this.props.corner || 'sharp';
+    const cmap = {
+      soft:  { lg: 22, md: 14, sm: 10 },
+      sharp: { lg: 10, md: 7, sm: 4 },
+    };
+    const c = cmap[corner] || cmap.soft;
+    r.style.setProperty('--r-lg', c.lg + 'px');
+    r.style.setProperty('--r-md', c.md + 'px');
+    r.style.setProperty('--r-sm', c.sm + 'px');
+  }
+
+  componentDidMount() { this.applyTweaks(); }
+  componentDidUpdate() { this.applyTweaks(); }
+
+  renderVals() {
+    return {
+      rootRef: (el) => { this._root = el; },
+      promptRef: (el) => { this._pre = el; },
+      copyLabel: this.state.copyLabel,
+      copyPrompt: () => {
+        const txt = this._pre ? this._pre.textContent : '';
+        try {
+          navigator.clipboard.writeText(txt);
+          this.setState({ copyLabel: 'Copied ✓' });
+          setTimeout(() => this.setState({ copyLabel: 'Copy' }), 1600);
+        } catch (e) {
+          this.setState({ copyLabel: 'Select & copy' });
+        }
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

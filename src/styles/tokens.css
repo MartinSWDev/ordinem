@@ -1,0 +1,84 @@
+/* ===========================================================================
+   Ordinem — Design Tokens (Neumorphic, light theme)
+   Drop this into your Vue app and import once (e.g. in main.ts or App.vue).
+   Every component reads these vars — never hard-code colors/shadows/radii.
+   Dark theme is deferred; when added, override the token block under a
+   [data-theme="dark"] scope (see notes at bottom).
+   =========================================================================== */
+
+/* Fonts — free on Google Fonts. Either @import here or <link> in index.html. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root {
+  /* ---- Color ---- */
+  --surface:   #E7EAF0;  /* app + every element background. neumorphism only reads when they match */
+  --text:      #2A2E36;  /* primary ink */
+  --text-dim:  #7E8794;  /* secondary text, labels */
+  --accent:    #F26A1B;  /* orange — primary action / live-active ONLY */
+  --success:   #2E9E5B;  /* passing / added */
+
+  /* ---- Shadow atoms (light + dark colors kept separate from geometry) ---- */
+  --sh-dark:   #C4C9D3;  /* lower-right shadow */
+  --sh-light:  #FFFFFF;  /* upper-left highlight */
+  --sh-dist:   5px;      /* raised offset */
+  --sh-blur:   11px;     /* raised blur */
+  --sh-din:    4px;      /* inset offset */
+  --sh-blin:   8px;      /* inset blur */
+
+  /* ---- Composed shadows: the only two elevation tools ---- */
+  --shadow-out: var(--sh-dist) var(--sh-dist) var(--sh-blur) var(--sh-dark),
+                calc(var(--sh-dist) * -1) calc(var(--sh-dist) * -1) var(--sh-blur) var(--sh-light);
+  --shadow-in:  inset var(--sh-din) var(--sh-din) var(--sh-blin) var(--sh-dark),
+                inset calc(var(--sh-din) * -1) calc(var(--sh-din) * -1) var(--sh-blin) var(--sh-light);
+
+  /* ---- Radii (SHARP is the chosen default) ---- */
+  --r-lg: 10px;  /* cards / panels */
+  --r-md: 7px;   /* controls / inputs */
+  --r-sm: 4px;   /* chips / small */
+  --r-pill: 999px;
+
+  /* ---- Spacing scale ---- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-6: 24px; --sp-8: 32px;
+
+  /* ---- Type ---- */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body:    'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono:    'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* App base */
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------------------
+   Reusable primitives (optional — copy into components or use as utilities).
+   Depth from shadow, hierarchy from spacing & type. Never borders as dividers.
+   --------------------------------------------------------------------------- */
+
+/* Raised — interactive or grouped */
+.n-raised { background: var(--surface); box-shadow: var(--shadow-out); border-radius: var(--r-md); }
+/* Inset — wells, inputs, pressed, tracks */
+.n-inset  { background: var(--surface); box-shadow: var(--shadow-in);  border-radius: var(--r-md); }
+
+/* State transitions */
+.n-raised, .n-inset, button { transition: box-shadow 160ms ease, transform 160ms ease; }
+
+/* ---------------------------------------------------------------------------
+   DARK THEME (deferred). When you add it, override ONLY these — geometry
+   (dist/blur/radii) stays shared. The highlight must stay close to the
+   surface color or it reads as a white glow:
+
+   [data-theme="dark"] {
+     --surface:  #24272E;
+     --text:     #E7E9ED;
+     --text-dim: #8A919C;
+     --sh-dark:  #131519;   // deeper
+     --sh-light: #2C3036;   // subtle, near-surface — NOT white
+   }
+   --------------------------------------------------------------------------- */
