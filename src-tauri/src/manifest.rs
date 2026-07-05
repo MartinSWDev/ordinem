@@ -7,6 +7,10 @@ pub struct Island {
     pub title: String,
     pub endpoint_base: String,
     pub credential_ref: String,
+    /// Optional custom frontend component to render for this island (e.g.
+    /// "tickets"). When absent, the generic fetch-and-display panel is used.
+    #[serde(default)]
+    pub component: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

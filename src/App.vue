@@ -1,9 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, type Component } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import type { Manifest } from "./types";
 import NSidebarItem from "./components/NSidebarItem.vue";
 import IslandPanel from "./components/IslandPanel.vue";
+import TicketsIsland from "./components/islands/TicketsIsland.vue";
+
+// Map a manifest island's `component` key to a custom Vue component. Islands
+// without a match (or no `component`) fall back to the generic panel.
+const islandComponents: Record<string, Component> = {
+  tickets: TicketsIsland,
+};
 
 const manifest = ref<Manifest | null>(null);
 const manifestError = ref<string | null>(null);
@@ -12,6 +19,11 @@ const selectedIslandId = ref<string | null>(null);
 const selectedIsland = computed(() =>
   manifest.value?.islands.find((island) => island.id === selectedIslandId.value) ?? null
 );
+
+const selectedComponent = computed<Component>(() => {
+  const key = selectedIsland.value?.component;
+  return (key && islandComponents[key]) || IslandPanel;
+});
 
 async function loadManifest() {
   manifestError.value = null;
@@ -64,7 +76,12 @@ onMounted(loadManifest);
         Could not load manifest: {{ manifestError }}
       </p>
 
-      <IslandPanel v-else-if="selectedIsland" :island="selectedIsland" :key="selectedIsland.id" />
+      <component
+        v-else-if="selectedIsland"
+        :is="selectedComponent"
+        :island="selectedIsland"
+        :key="selectedIsland.id"
+      />
 
       <p v-else class="empty-state">No islands configured in the manifest.</p>
     </div>
