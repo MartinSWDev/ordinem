@@ -57,9 +57,10 @@ class JiraClient:
         self._auth = (settings.jira_email, settings.jira_api_token)
         self._ac_field = settings.jira_acceptance_criteria_field or None
 
-    # Fields worth pulling for both single-issue and bulk search. Acceptance
-    # criteria is appended when configured.
-    _BASE_FIELDS = [
+    # Named fields to pull in bulk search — enough to render list + a rich
+    # normalized view, without the full *all firehose. Comments/attachments are
+    # left to the per-detail fetch (fetch_issue uses *all).
+    _SEARCH_FIELDS = [
         "summary",
         "description",
         "status",
@@ -67,52 +68,133 @@ class JiraClient:
         "issuetype",
         "project",
         "assignee",
+        "reporter",
+        "labels",
+        "components",
+        "parent",
+        "subtasks",
+        "issuelinks",
+        "fixVersions",
+        "duedate",
+        "created",
         "updated",
-        "comment",
-        "attachment",
     ]
 
     def _search_fields(self) -> list[str]:
-        fields = list(self._BASE_FIELDS)
+        fields = list(self._SEARCH_FIELDS)
         if self._ac_field:
             fields.append(self._ac_field)
         return fields
 
-    def _normalize_issue(self, raw: dict[str, Any]) -> dict[str, Any]:
-        """Turn a raw Jira issue payload into our normalized ticket dict. Shared
-        by fetch_issue (single) and search_issues (bulk)."""
-        jira_key = raw.get("key", "")
-        fields = raw.get("fields", {}) or {}
+    def _rich_jira(self, raw: dict[str, Any], jira_key: str) -> dict[str, Any]:
+        """Curated, LLM-useful projection of a Jira issue — the subset an agent
+        actually needs, instead of raw_jira's ~120 keys.
 
+        Missing sub-fields degrade to None/[]; comments and attachments only
+        populate when the payload carried them (i.e. from fetch_issue's *all)."""
+        f = raw.get("fields", {}) or {}
+
+        def name(v: Any) -> Any:
+            return v.get("name") if isinstance(v, dict) else None
+
+        def display(v: Any) -> Any:
+            return v.get("displayName") if isinstance(v, dict) else None
+
+        parent = f.get("parent") or None
         acceptance = None
         if self._ac_field:
-            acceptance = _adf_to_text(fields.get(self._ac_field)).strip() or None
+            acceptance = _adf_to_text(f.get(self._ac_field)).strip() or None
 
         comments = [
             {
-                "author": (c.get("author") or {}).get("displayName"),
-                "body": _adf_to_text(c.get("body")).strip(),
+                "author": display(c.get("author")),
                 "created": c.get("created"),
+                "body": _adf_to_text(c.get("body")).strip(),
             }
-            for c in (fields.get("comment", {}) or {}).get("comments", [])
+            for c in (f.get("comment", {}) or {}).get("comments", [])
         ]
         attachments = [
-            {"filename": a.get("filename"), "url": a.get("content"), "size": a.get("size")}
-            for a in (fields.get("attachment") or [])
+            {
+                "filename": a.get("filename"),
+                "url": a.get("content"),
+                "size": a.get("size"),
+                "mime": a.get("mimeType"),
+            }
+            for a in (f.get("attachment") or [])
         ]
+        subtasks = [
+            {
+                "key": st.get("key"),
+                "summary": (st.get("fields") or {}).get("summary"),
+                "status": name((st.get("fields") or {}).get("status")),
+            }
+            for st in (f.get("subtasks") or [])
+        ]
+        links = []
+        for link in f.get("issuelinks") or []:
+            rel = (link.get("type") or {})
+            if link.get("outwardIssue"):
+                other, direction, label = link["outwardIssue"], "outward", rel.get("outward")
+            elif link.get("inwardIssue"):
+                other, direction, label = link["inwardIssue"], "inward", rel.get("inward")
+            else:
+                continue
+            links.append(
+                {
+                    "relation": label or rel.get("name"),
+                    "direction": direction,
+                    "key": other.get("key"),
+                    "summary": (other.get("fields") or {}).get("summary"),
+                    "status": name((other.get("fields") or {}).get("status")),
+                }
+            )
 
+        status = f.get("status") or {}
+        return {
+            "key": jira_key,
+            "url": self.issue_browse_url(jira_key),
+            "summary": f.get("summary"),
+            "issue_type": name(f.get("issuetype")),
+            "status": status.get("name"),
+            "status_category": (status.get("statusCategory") or {}).get("name"),
+            "priority": name(f.get("priority")),
+            "labels": f.get("labels") or [],
+            "components": [name(c) for c in (f.get("components") or [])],
+            "assignee": display(f.get("assignee")),
+            "reporter": display(f.get("reporter")),
+            "created": f.get("created"),
+            "updated": f.get("updated"),
+            "due_date": f.get("duedate"),
+            "fix_versions": [name(v) for v in (f.get("fixVersions") or [])],
+            "parent": {
+                "key": parent.get("key"),
+                "summary": (parent.get("fields") or {}).get("summary"),
+            }
+            if parent
+            else None,
+            "description": _adf_to_text(f.get("description")).strip() or None,
+            "acceptance_criteria": acceptance,
+            "subtasks": subtasks,
+            "links": links,
+            "comments": comments,
+            "attachments": attachments,
+        }
+
+    def _normalize_issue(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Turn a raw Jira issue payload into the fields we persist: the ticket
+        table columns plus a curated `jira` object (and raw_jira for debugging).
+        Shared by fetch_issue (single) and search_issues (bulk)."""
+        jira_key = raw.get("key", "")
+        fields = raw.get("fields", {}) or {}
         project_key = (fields.get("project") or {}).get("key") or (
             jira_key.split("-")[0] if "-" in jira_key else jira_key
         )
-
         return {
             "jira_key": jira_key,
             "project_key": project_key,
             "title": fields.get("summary") or jira_key,
             "description": _adf_to_text(fields.get("description")).strip() or None,
-            "acceptance_criteria": acceptance,
-            "comments": comments,
-            "attachments": attachments,
+            "jira": self._rich_jira(raw, jira_key),
             "raw_jira": raw,
         }
 

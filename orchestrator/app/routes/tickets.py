@@ -49,6 +49,7 @@ async def ingest_ticket(
             title=issue["title"],
             description=issue["description"],
             raw_jira=issue["raw_jira"],
+            jira=issue["jira"],
             processing_instructions=body.processing_instructions,
         )
     return ticket
@@ -96,6 +97,7 @@ async def sync_my_tickets(
                     title=issue["title"],
                     description=issue["description"],
                     raw_jira=issue["raw_jira"],
+                    jira=issue["jira"],
                     processing_instructions=None,
                 )
         tickets = await repository.list_tickets(conn)
@@ -122,13 +124,37 @@ async def list_tickets(
 
 @router.get("/{ticket_id}", response_model=schemas.TicketDetail)
 async def get_ticket(
-    ticket_id: UUID, pool: asyncpg.Pool = Depends(get_pool)
+    ticket_id: UUID,
+    refresh: bool = True,
+    pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
 ) -> schemas.TicketDetail:
-    """Ticket + subtasks + status."""
+    """Ticket + subtasks + status. When `refresh` (default) and Jira is
+    configured, re-fetches the issue fresh via fetch_issue (*all fields) so the
+    detail carries up-to-date comments/attachments/links, then persists the
+    curated `jira` projection. Falls back to the stored copy if Jira is
+    unavailable, so the detail always renders."""
     async with pool.acquire() as conn:
         detail = await repository.get_ticket_detail(conn, ticket_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="ticket not found")
+
+    if refresh and settings.jira_configured:
+        try:
+            issue = await JiraClient(settings).fetch_issue(detail.ticket.jira_key)
+            async with pool.acquire() as conn:
+                refreshed = await repository.refresh_ticket_jira(
+                    conn,
+                    ticket_id,
+                    title=issue["title"],
+                    description=issue["description"],
+                    raw_jira=issue["raw_jira"],
+                    jira=issue["jira"],
+                )
+            detail.ticket = refreshed
+        except (JiraNotConfigured, JiraError):
+            pass  # keep the stored copy; detail still renders
+
     return detail
 
 

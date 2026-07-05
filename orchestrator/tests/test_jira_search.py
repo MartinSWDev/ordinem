@@ -75,3 +75,65 @@ async def test_search_raises_on_http_error(monkeypatch):
 
     with pytest.raises(JiraError):
         await client.search_issues("nonsense")
+
+
+def _rich_settings():
+    return Settings(
+        jira_base_url="https://example.atlassian.net",
+        jira_email="me@example.com",
+        jira_api_token="token",
+        jira_acceptance_criteria_field="customfield_100",
+    )
+
+
+def test_rich_jira_extracts_llm_useful_fields():
+    client = JiraClient(_rich_settings())
+    raw = {
+        "key": "PROJ-7",
+        "fields": {
+            "summary": "Do the thing",
+            "issuetype": {"name": "Bug"},
+            "status": {"name": "In Progress", "statusCategory": {"name": "In Progress"}},
+            "priority": {"name": "High"},
+            "labels": ["backend", "oauth"],
+            "components": [{"name": "auth"}],
+            "assignee": {"displayName": "June Dev"},
+            "reporter": {"displayName": "PM Person"},
+            "description": [{"type": "paragraph", "content": [{"type": "text", "text": "desc"}]}],
+            "customfield_100": [{"type": "paragraph", "content": [{"type": "text", "text": "must work"}]}],
+            "parent": {"key": "PROJ-1", "fields": {"summary": "Epic"}},
+            "subtasks": [{"key": "PROJ-8", "fields": {"summary": "sub", "status": {"name": "To Do"}}}],
+            "issuelinks": [
+                {
+                    "type": {"name": "Blocks", "outward": "blocks"},
+                    "outwardIssue": {"key": "PROJ-9", "fields": {"summary": "other", "status": {"name": "Done"}}},
+                }
+            ],
+            "comment": {"comments": [
+                {"author": {"displayName": "June Dev"}, "created": "2026-01-01", "body": [{"type": "paragraph", "content": [{"type": "text", "text": "a comment"}]}]}
+            ]},
+            "attachment": [{"filename": "log.txt", "content": "http://x/log.txt", "size": 12, "mimeType": "text/plain"}],
+        },
+    }
+    j = client._rich_jira(raw, "PROJ-7")
+    assert j["priority"] == "High"
+    assert j["labels"] == ["backend", "oauth"]
+    assert j["assignee"] == "June Dev"
+    assert j["acceptance_criteria"] == "must work"
+    assert j["parent"]["key"] == "PROJ-1"
+    assert j["subtasks"][0]["key"] == "PROJ-8"
+    assert j["links"][0]["key"] == "PROJ-9" and j["links"][0]["direction"] == "outward"
+    assert j["comments"][0]["author"] == "June Dev"
+    assert j["comments"][0]["body"] == "a comment"
+    assert j["attachments"][0]["mime"] == "text/plain"
+
+
+def test_normalize_issue_carries_jira_and_columns():
+    client = JiraClient(_rich_settings())
+    raw = {"key": "PROJ-1", "fields": {"summary": "S", "project": {"key": "PROJ"}}}
+    n = client._normalize_issue(raw)
+    assert n["jira_key"] == "PROJ-1"
+    assert n["project_key"] == "PROJ"
+    assert n["title"] == "S"
+    assert n["jira"]["key"] == "PROJ-1"
+    assert "raw_jira" in n

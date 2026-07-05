@@ -31,6 +31,59 @@ export type TicketStatus =
 
 export type SubtaskStatus = "pending" | "running" | "done" | "failed" | "skipped";
 
+export interface JiraComment {
+  author: string | null;
+  created: string | null;
+  body: string;
+}
+
+export interface JiraLink {
+  relation: string | null;
+  direction: "inward" | "outward";
+  key: string | null;
+  summary: string | null;
+  status: string | null;
+}
+
+export interface JiraSubtask {
+  key: string | null;
+  summary: string | null;
+  status: string | null;
+}
+
+export interface JiraAttachment {
+  filename: string | null;
+  url: string | null;
+  size: number | null;
+  mime: string | null;
+}
+
+/** Curated, LLM-useful projection of the Jira issue (replaces raw_jira). */
+export interface NormalizedJira {
+  key: string;
+  url: string;
+  summary: string | null;
+  issue_type: string | null;
+  status: string | null;
+  status_category: string | null;
+  priority: string | null;
+  labels: string[];
+  components: string[];
+  assignee: string | null;
+  reporter: string | null;
+  created: string | null;
+  updated: string | null;
+  due_date: string | null;
+  fix_versions: string[];
+  parent: { key: string | null; summary: string | null } | null;
+  description: string | null;
+  acceptance_criteria: string | null;
+  subtasks: JiraSubtask[];
+  links: JiraLink[];
+  comments: JiraComment[];
+  attachments: JiraAttachment[];
+}
+
 export interface Ticket {
   id: string;
   repo_id: string | null;
@@ -38,7 +91,7 @@ export interface Ticket {
   jira_key: string;
   title: string;
   description: string | null;
-  raw_jira: Record<string, any> | null;
+  jira: NormalizedJira | null;
   processing_instructions: string | null;
   branch_name: string | null;
   status: TicketStatus;

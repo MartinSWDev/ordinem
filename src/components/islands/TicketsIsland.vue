@@ -43,7 +43,13 @@ function statusTone(s: TicketStatus): "accent" | "success" | "muted" {
 }
 const statusPulses = (s: TicketStatus) => s === "in_progress";
 function priorityOf(t: Ticket): string | null {
-  return t.raw_jira?.fields?.priority?.name ?? null;
+  return t.jira?.priority ?? null;
+}
+const jira = computed(() => detail.value?.ticket.jira ?? null);
+function fmtDate(s: string | null): string {
+  if (!s) return "";
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? s : d.toLocaleString();
 }
 
 // --- data loading -----------------------------------------------------------
@@ -186,17 +192,77 @@ onMounted(load);
           <NBadge :tone="statusTone(detail.ticket.status)" :pulse="statusPulses(detail.ticket.status)">
             {{ detail.ticket.status }}
           </NBadge>
+          <NBadge v-if="jira?.status" tone="muted">{{ jira.status }}</NBadge>
+          <NBadge v-if="jira?.issue_type">{{ jira.issue_type }}</NBadge>
           <NBadge v-if="priorityOf(detail.ticket)">{{ priorityOf(detail.ticket) }}</NBadge>
         </div>
         <h3 class="detail-title">{{ detail.ticket.title }}</h3>
 
-        <div class="section">
-          <div class="label">Description</div>
-          <pre class="desc">{{ detail.ticket.description || "(no description)" }}</pre>
+        <!-- META -->
+        <div class="meta" v-if="jira">
+          <div v-if="jira.assignee"><span class="mlabel">Assignee</span>{{ jira.assignee }}</div>
+          <div v-if="jira.reporter"><span class="mlabel">Reporter</span>{{ jira.reporter }}</div>
+          <div v-if="jira.parent"><span class="mlabel">Parent</span>{{ jira.parent.key }} · {{ jira.parent.summary }}</div>
+          <div v-if="jira.components.length"><span class="mlabel">Components</span>{{ jira.components.join(", ") }}</div>
+          <div v-if="jira.fix_versions.length"><span class="mlabel">Fix versions</span>{{ jira.fix_versions.join(", ") }}</div>
+          <div v-if="jira.due_date"><span class="mlabel">Due</span>{{ fmtDate(jira.due_date) }}</div>
+          <div v-if="jira.updated"><span class="mlabel">Updated</span>{{ fmtDate(jira.updated) }}</div>
+        </div>
+        <div class="chips" v-if="jira?.labels.length">
+          <span v-for="l in jira.labels" :key="l" class="chip">{{ l }}</span>
         </div>
 
+        <div class="section">
+          <div class="label">Description</div>
+          <pre class="desc">{{ jira?.description || detail.ticket.description || "(no description)" }}</pre>
+        </div>
+
+        <div class="section" v-if="jira?.acceptance_criteria">
+          <div class="label">Acceptance criteria</div>
+          <pre class="desc">{{ jira.acceptance_criteria }}</pre>
+        </div>
+
+        <!-- Jira sub-issues + linked issues -->
+        <div class="section" v-if="jira?.subtasks.length">
+          <div class="label">Jira sub-issues</div>
+          <div v-for="st in jira.subtasks" :key="st.key ?? ''" class="linkrow">
+            <span class="key">{{ st.key }}</span>
+            <span class="ltext">{{ st.summary }}</span>
+            <NBadge v-if="st.status" tone="muted">{{ st.status }}</NBadge>
+          </div>
+        </div>
+        <div class="section" v-if="jira?.links.length">
+          <div class="label">Linked issues</div>
+          <div v-for="(lk, i) in jira.links" :key="i" class="linkrow">
+            <span class="rel">{{ lk.relation }}</span>
+            <span class="key">{{ lk.key }}</span>
+            <span class="ltext">{{ lk.summary }}</span>
+          </div>
+        </div>
+
+        <!-- Comments -->
+        <div class="section" v-if="jira?.comments.length">
+          <div class="label">Comments · {{ jira.comments.length }}</div>
+          <div v-for="(c, i) in jira.comments" :key="i" class="comment">
+            <div class="chead">
+              <b>{{ c.author || "—" }}</b><span class="cdate">{{ fmtDate(c.created) }}</span>
+            </div>
+            <pre class="cbody">{{ c.body }}</pre>
+          </div>
+        </div>
+
+        <!-- Attachments -->
+        <div class="section" v-if="jira?.attachments.length">
+          <div class="label">Attachments</div>
+          <div v-for="(a, i) in jira.attachments" :key="i" class="linkrow">
+            <span class="ltext">{{ a.filename }}</span>
+            <span class="rel">{{ a.mime }}</span>
+          </div>
+        </div>
+
+        <!-- Agent subtasks (ours, not Jira's) -->
         <div class="section" v-if="detail.subtasks.length">
-          <div class="label">Subtasks</div>
+          <div class="label">Agent subtasks</div>
           <div v-for="s in detail.subtasks" :key="s.id" class="subtask">
             <NBadge :tone="s.status === 'done' ? 'success' : s.status === 'running' ? 'accent' : 'muted'"
               :pulse="s.status === 'running'">{{ s.status }}</NBadge>
@@ -348,6 +414,7 @@ onMounted(load);
 .detail-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--sp-2);
 }
 .detail-title {
@@ -389,6 +456,89 @@ onMounted(load);
   align-items: center;
   gap: var(--sp-2);
   font-size: 13px;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px var(--sp-4);
+  margin-top: var(--sp-3);
+  font-size: 12.5px;
+}
+.meta > div {
+  display: flex;
+  gap: 6px;
+}
+.mlabel {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  min-width: 74px;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--sp-3);
+}
+.chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-out);
+  color: var(--text-dim);
+}
+.linkrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 12.5px;
+}
+.linkrow .ltext {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rel {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+.comment {
+  background: var(--surface);
+  box-shadow: var(--shadow-in);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+}
+.cdate {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.cbody {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .process {

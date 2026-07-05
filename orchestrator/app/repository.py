@@ -53,6 +53,7 @@ async def upsert_ticket_from_jira(
     title: str,
     description: str | None,
     raw_jira: dict,
+    jira: dict,
     processing_instructions: str | None,
 ) -> schemas.TicketRow:
     """Insert a new ticket or refresh an existing one by jira_key. A refresh
@@ -61,14 +62,15 @@ async def upsert_ticket_from_jira(
     updated_at, but never rewinds status (an in-flight ticket stays in-flight)."""
     row = await conn.fetchrow(
         """
-        insert into tickets (repo_id, jira_project_key, jira_key, title, description, raw_jira, processing_instructions)
-        values ($1, $2, $3, $4, $5, $6, $7)
+        insert into tickets (repo_id, jira_project_key, jira_key, title, description, raw_jira, jira, processing_instructions)
+        values ($1, $2, $3, $4, $5, $6, $7, $8)
         on conflict (jira_key) do update set
           repo_id = excluded.repo_id,
           jira_project_key = excluded.jira_project_key,
           title = excluded.title,
           description = excluded.description,
           raw_jira = excluded.raw_jira,
+          jira = excluded.jira,
           processing_instructions =
             coalesce(excluded.processing_instructions, tickets.processing_instructions),
           updated_at = now()
@@ -80,7 +82,35 @@ async def upsert_ticket_from_jira(
         title,
         description,
         raw_jira,
+        jira,
         processing_instructions,
+    )
+    return schemas.TicketRow(**dict(row))
+
+
+async def refresh_ticket_jira(
+    conn: asyncpg.Connection,
+    ticket_id: UUID,
+    *,
+    title: str,
+    description: str | None,
+    raw_jira: dict,
+    jira: dict,
+) -> schemas.TicketRow:
+    """Update just the Jira-sourced content of an existing ticket (used when the
+    detail view re-fetches fresh from Jira). Never touches status/repo/branch."""
+    row = await conn.fetchrow(
+        """
+        update tickets set
+          title = $2, description = $3, raw_jira = $4, jira = $5, updated_at = now()
+        where id = $1
+        returning *
+        """,
+        ticket_id,
+        title,
+        description,
+        raw_jira,
+        jira,
     )
     return schemas.TicketRow(**dict(row))
 

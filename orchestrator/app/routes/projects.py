@@ -67,6 +67,7 @@ async def sync_project(
                     title=issue["title"],
                     description=issue["description"],
                     raw_jira=issue["raw_jira"],
+                    jira=issue["jira"],
                     processing_instructions=None,
                 )
                 synced += 1

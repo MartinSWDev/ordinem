@@ -36,7 +36,10 @@ class TicketRow(BaseModel):
     jira_key: str
     title: str
     description: str | None = None
-    raw_jira: dict | None = None
+    # Curated, LLM-useful projection of the Jira issue (comments, acceptance
+    # criteria, labels, links, attachments, …). raw_jira stays in the DB for
+    # debugging but is deliberately not returned here.
+    jira: dict | None = None
     processing_instructions: str | None = None
     branch_name: str | None = None
     status: TicketStatus
