@@ -51,6 +51,10 @@ export function useOrchestrator(island: Island) {
   }
 
   return {
+    /** Direct URL to the attachment proxy — for use as an <img> src (bypasses
+     * api_request; the local orchestrator streams the bytes with Jira auth). */
+    attachmentUrl: (ticketId: string, index: number) =>
+      `${base}/${ticketId}/attachments/${index}`,
     listTickets: (project?: string) =>
       request<Ticket[]>("GET", `${project ? `?project=${encodeURIComponent(project)}` : ""}`),
     syncMyTickets: () => request<MyTicketsSyncResult>("POST", "/sync"),

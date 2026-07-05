@@ -7,7 +7,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from .. import repository, schemas
 from ..config import Settings
@@ -156,6 +156,42 @@ async def get_ticket(
             pass  # keep the stored copy; detail still renders
 
     return detail
+
+
+@router.get("/{ticket_id}/attachments/{index}")
+async def get_attachment(
+    ticket_id: UUID,
+    index: int,
+    pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
+) -> Response:
+    """Proxy a Jira attachment through the orchestrator (which holds the creds)
+    so the webview can display images without exposing the token or hitting
+    Jira's auth/CORS directly. Indexes into the ticket's stored
+    jira.attachments list."""
+    async with pool.acquire() as conn:
+        ticket = await repository.get_ticket(conn, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="ticket not found")
+    attachments = (ticket.jira or {}).get("attachments") or []
+    if index < 0 or index >= len(attachments):
+        raise HTTPException(status_code=404, detail="attachment not found")
+    url = attachments[index].get("url")
+    if not url:
+        raise HTTPException(status_code=404, detail="attachment has no url")
+
+    try:
+        data, content_type = await JiraClient(settings).fetch_attachment(url)
+    except JiraNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except JiraError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 @router.post("/{ticket_id}/process", response_model=schemas.TicketDetail, status_code=202)

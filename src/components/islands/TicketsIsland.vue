@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import type { Island, Ticket, TicketDetail, TicketStatus } from "../../types";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useOrchestrator, ApiError } from "../../api/orchestrator";
 import NButton from "../NButton.vue";
 import NBadge from "../NBadge.vue";
+import LinkedText from "../LinkedText.vue";
 
 const props = defineProps<{ island: Island }>();
 const api = useOrchestrator(props.island);
@@ -50,6 +52,15 @@ function fmtDate(s: string | null): string {
   if (!s) return "";
   const d = new Date(s);
   return isNaN(d.getTime()) ? s : d.toLocaleString();
+}
+const isImage = (mime: string | null) => !!mime && mime.startsWith("image/");
+function open(url: string | null) {
+  if (url) openUrl(url).catch(() => {});
+}
+/** Browse URL for a sibling issue key, derived from the main issue's url. */
+function issueUrl(key: string | null): string | null {
+  if (!key || !jira.value?.url) return null;
+  return jira.value.url.replace(/\/browse\/.*$/, `/browse/${key}`);
 }
 
 // --- data loading -----------------------------------------------------------
@@ -214,19 +225,21 @@ onMounted(load);
 
         <div class="section">
           <div class="label">Description</div>
-          <pre class="desc">{{ jira?.description || detail.ticket.description || "(no description)" }}</pre>
+          <div class="desc">
+            <LinkedText :text="jira?.description || detail.ticket.description || '(no description)'" />
+          </div>
         </div>
 
         <div class="section" v-if="jira?.acceptance_criteria">
           <div class="label">Acceptance criteria</div>
-          <pre class="desc">{{ jira.acceptance_criteria }}</pre>
+          <div class="desc"><LinkedText :text="jira.acceptance_criteria" /></div>
         </div>
 
         <!-- Jira sub-issues + linked issues -->
         <div class="section" v-if="jira?.subtasks.length">
           <div class="label">Jira sub-issues</div>
           <div v-for="st in jira.subtasks" :key="st.key ?? ''" class="linkrow">
-            <span class="key">{{ st.key }}</span>
+            <a class="key lnk" @click.prevent="open(issueUrl(st.key))">{{ st.key }}</a>
             <span class="ltext">{{ st.summary }}</span>
             <NBadge v-if="st.status" tone="muted">{{ st.status }}</NBadge>
           </div>
@@ -235,7 +248,7 @@ onMounted(load);
           <div class="label">Linked issues</div>
           <div v-for="(lk, i) in jira.links" :key="i" class="linkrow">
             <span class="rel">{{ lk.relation }}</span>
-            <span class="key">{{ lk.key }}</span>
+            <a class="key lnk" @click.prevent="open(issueUrl(lk.key))">{{ lk.key }}</a>
             <span class="ltext">{{ lk.summary }}</span>
           </div>
         </div>
@@ -247,16 +260,28 @@ onMounted(load);
             <div class="chead">
               <b>{{ c.author || "—" }}</b><span class="cdate">{{ fmtDate(c.created) }}</span>
             </div>
-            <pre class="cbody">{{ c.body }}</pre>
+            <div class="cbody"><LinkedText :text="c.body" /></div>
           </div>
         </div>
 
         <!-- Attachments -->
         <div class="section" v-if="jira?.attachments.length">
           <div class="label">Attachments</div>
-          <div v-for="(a, i) in jira.attachments" :key="i" class="linkrow">
-            <span class="ltext">{{ a.filename }}</span>
-            <span class="rel">{{ a.mime }}</span>
+          <div v-for="(a, i) in jira.attachments" :key="i" class="attachment">
+            <img
+              v-if="isImage(a.mime)"
+              class="att-img"
+              :src="api.attachmentUrl(detail.ticket.id, i)"
+              :alt="a.filename ?? ''"
+              loading="lazy"
+              @click="open(api.attachmentUrl(detail.ticket.id, i))"
+            />
+            <div v-else class="linkrow">
+              <a class="ltext lnk" @click.prevent="open(api.attachmentUrl(detail.ticket.id, i))">
+                {{ a.filename }}
+              </a>
+              <span class="rel">{{ a.mime }}</span>
+            </div>
           </div>
         </div>
 
@@ -511,6 +536,23 @@ onMounted(load);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-dim);
+}
+.lnk {
+  cursor: pointer;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.attachment {
+  margin-bottom: var(--sp-2);
+}
+.att-img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-out);
+  cursor: zoom-in;
+  display: block;
 }
 .comment {
   background: var(--surface);

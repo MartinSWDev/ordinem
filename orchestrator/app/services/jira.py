@@ -36,13 +36,29 @@ def _adf_to_text(node: Any) -> str:
         return ""
     ntype = node.get("type")
     if ntype == "text":
-        return node.get("text", "")
+        text = node.get("text", "")
+        # Preserve hyperlinks as markdown so the href survives for the LLM
+        # (and can be linkified in the UI) instead of being flattened away.
+        for mark in node.get("marks") or []:
+            if mark.get("type") == "link":
+                href = (mark.get("attrs") or {}).get("href")
+                if href:
+                    text = f"[{text}]({href})"
+        return text
     if ntype == "hardBreak":
         return "\n"
+    # Inline / block images (ADF media) — keep a marker so the reader knows an
+    # image was here; the actual bytes are served via the attachment proxy.
+    if ntype in ("media", "mediaInline"):
+        attrs = node.get("attrs") or {}
+        label = attrs.get("alt") or attrs.get("id") or "image"
+        return f"[image: {label}]"
     inner = "".join(_adf_to_text(c) for c in node.get("content", []))
     if ntype == "listItem":
         return "- " + inner.strip() + "\n"
     if ntype in ("paragraph", "heading", "tableRow", "codeBlock", "blockquote"):
+        return inner + "\n"
+    if ntype in ("mediaSingle", "mediaGroup"):
         return inner + "\n"
     return inner
 
@@ -254,3 +270,17 @@ class JiraClient:
     def issue_browse_url(self, jira_key: str) -> str:
         """The human-facing Jira URL for the iframe (section 6)."""
         return f"{self._base}/browse/{jira_key}"
+
+    async def fetch_attachment(self, url: str) -> tuple[bytes, str]:
+        """Download an attachment's bytes with Jira auth. The content endpoint
+        302s to a signed media URL, so follow redirects. Returns (bytes,
+        content_type). Only URLs on the configured Jira host are allowed —
+        callers pass URLs straight from stored issue data, but we guard against
+        a poisoned payload pointing the proxy at an arbitrary host."""
+        if not url.startswith(self._base):
+            raise JiraError("attachment url is not on the configured Jira host")
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+            resp = await client.get(url, auth=self._auth)
+        if resp.status_code >= 400:
+            raise JiraError(f"attachment fetch failed ({resp.status_code})")
+        return resp.content, resp.headers.get("content-type", "application/octet-stream")

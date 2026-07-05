@@ -137,3 +137,39 @@ def test_normalize_issue_carries_jira_and_columns():
     assert n["title"] == "S"
     assert n["jira"]["key"] == "PROJ-1"
     assert "raw_jira" in n
+
+
+def test_adf_preserves_link_href_as_markdown():
+    from app.services.jira import _adf_to_text
+    adf = {"type": "paragraph", "content": [
+        {"type": "text", "text": "see "},
+        {"type": "text", "text": "the doc", "marks": [{"type": "link", "attrs": {"href": "https://ex.com/d"}}]},
+    ]}
+    out = _adf_to_text(adf)
+    assert "[the doc](https://ex.com/d)" in out
+
+
+def test_adf_marks_inline_media():
+    from app.services.jira import _adf_to_text
+    adf = {"type": "mediaSingle", "content": [
+        {"type": "media", "attrs": {"id": "abc", "alt": "screenshot.png", "type": "file"}},
+    ]}
+    out = _adf_to_text(adf)
+    assert "[image: screenshot.png]" in out
+
+
+async def test_fetch_attachment_rejects_foreign_host(monkeypatch):
+    from app.services.jira import JiraError
+    client = JiraClient(_settings())
+    with pytest.raises(JiraError):
+        await client.fetch_attachment("https://evil.example.com/x.png")
+
+
+async def test_fetch_attachment_returns_bytes(monkeypatch):
+    async def fake_get(self, url, auth=None):
+        return httpx.Response(200, content=b"PNGDATA", headers={"content-type": "image/png"})
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    client = JiraClient(_settings())
+    data, ctype = await client.fetch_attachment("https://example.atlassian.net/rest/api/3/attachment/content/1")
+    assert data == b"PNGDATA"
+    assert ctype == "image/png"
