@@ -16,8 +16,11 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
-    # Database
-    coolify_postgres_url: str = "postgresql://ordinem:ordinem@localhost:5433/ordinem"
+    # Database. Points at whichever Postgres holds *this* deployment's data:
+    # a local instance on the work Mac for the `work` schema (keeps work ticket
+    # data on the work machine), or the shared Coolify Postgres for
+    # personal/shared data. See the README "Deployment & data residency".
+    database_url: str = "postgresql://ordinem:ordinem@localhost:5433/ordinem"
     db_schema: str = "work"
 
     # Jira

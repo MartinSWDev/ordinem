@@ -46,17 +46,24 @@ tests/               state-machine coverage
    uv sync --extra dev     # also install pytest
    ```
 
-2. **Local Postgres** (for dev; production points at the Coolify instance):
+2. **Postgres** (see "Deployment & data residency" below for where it should
+   actually live). For a quick local instance via Docker:
    ```sh
    docker run -d --name ordinem-pg \
      -e POSTGRES_USER=ordinem -e POSTGRES_PASSWORD=ordinem -e POSTGRES_DB=ordinem \
      -p 5433:5432 postgres:16
    ```
+   Or a Homebrew instance kept always-on at negligible cost:
+   ```sh
+   brew services start postgresql@16   # starts at login, ~30MB idle
+   createdb ordinem
+   ```
 
 3. **Configure**:
    ```sh
    cp .env.example .env
-   # fill in JIRA_*, ANTHROPIC_API_KEY, QWEN_PROXY_URL as you get them
+   # set DATABASE_URL to your Postgres; fill in JIRA_*, ANTHROPIC_API_KEY,
+   # QWEN_PROXY_URL as you get them
    ```
 
 4. **Run** (migrations apply automatically on startup):
@@ -79,6 +86,41 @@ remote / compose path (section 11). Seed it once, e.g.:
 insert into work.repos (name, jira_project_key, git_remote_url, docker_compose_path)
 values ('my-app', 'PROJ', 'git@github.com:me/my-app.git', '/Users/me/repos/my-app/docker-compose.yml');
 ```
+
+## Deployment & data residency
+
+Work ticket details should **not** leave the work machine. So the database is
+split by data-residency rather than run as one shared instance:
+
+| Data | Where the DB lives | Where this service runs |
+| --- | --- | --- |
+| `work` (Jira tickets, subtasks, agent events) | **local Postgres on the work Mac** | on the work Mac |
+| `personal` / `shared` (todos, calendar, stats) | shared Coolify Postgres (home server) | on the home server |
+
+The work orchestrator + agent workers run on the work Mac anyway — the agents
+check out and edit work repos there and run their docker-compose stacks there —
+so work ticket data is fetched, stored, and processed entirely on the work
+machine and never touches personally-hosted infrastructure. This is a
+`DATABASE_URL` change only; the code is identical across deployments.
+
+The dashboard islands (on any device) are thin viewers: the work-tickets island
+points its `endpoint_base` at the work Mac (localhost, or its Tailscale address
+when glancing from another device); other islands point at the home server.
+
+**What needs to be running:**
+
+- **Postgres → always on.** The data must persist between agent runs (the
+  dashboard reads ticket state when no agent is active), and idle cost is
+  negligible, so run it via launchd and forget it:
+  ```sh
+  brew services start postgresql@16
+  ```
+- **This API → always on if** you want to read ticket state from another device
+  whenever the work Mac is awake; **on-demand** if you only use it at the Mac.
+  Reachable from other devices only while the work Mac is awake and on Tailscale
+  — for work data, that's a feature.
+- **Agent workers → on-demand.** They spin up per dispatch and exit; nothing
+  persistent.
 
 ## What runs now vs. what needs the live environment
 

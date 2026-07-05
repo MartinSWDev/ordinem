@@ -32,7 +32,7 @@ async def get_pool() -> asyncpg.Pool:
     if _pool is None:
         settings = get_settings()
         _pool = await asyncpg.create_pool(
-            settings.coolify_postgres_url,
+            settings.database_url,
             min_size=1,
             max_size=10,
             init=_init_connection,
@@ -56,7 +56,7 @@ async def run_migrations() -> list[str]:
 
     # A bootstrap connection that does NOT pin search_path (the schema may not
     # exist yet). We create the schema, then the tracking table, then apply.
-    conn = await asyncpg.connect(settings.coolify_postgres_url)
+    conn = await asyncpg.connect(settings.database_url)
     applied: list[str] = []
     try:
         await conn.execute(f'create schema if not exists "{schema}"')
