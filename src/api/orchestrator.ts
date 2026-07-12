@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CalendarEvent,
   FetchOutcome,
   Island,
   MyTicketsSyncResult,
@@ -51,6 +52,7 @@ export function useOrchestrator(island: Island) {
   }
 
   return {
+    listCalendarEvents: () => request<CalendarEvent[]>("GET", ""),
     /** Direct URL to the attachment proxy — for use as an <img> src (bypasses
      * api_request; the local orchestrator streams the bytes with Jira auth). */
     attachmentUrl: (ticketId: string, index: number) =>
