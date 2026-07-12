@@ -145,3 +145,27 @@ async def run_subtask(
             conn, subtask_id, SubtaskStatus.DONE, backend=completed_backend
         )
         await repository.maybe_advance_ticket_to_review(conn, subtask.ticket_id)
+
+
+async def run_ticket_agent(
+    pool: asyncpg.Pool,
+    settings: Settings,
+    ticket_id: UUID,
+) -> None:
+    """Kick off the agent for a ticket (called in the background by /process).
+
+    Creates the lead coordination subtask and runs it. As the real Agent SDK
+    lands, this is where the lead-agent stream is parsed into one subtask per
+    teammate (section 7.5); for now the lead run is a single coordination
+    subtask, and its agent_events feed the live progress view. Failures (e.g.
+    the SDK not installed) are recorded on the subtask, not raised to the
+    caller — this runs detached from the request."""
+    async with pool.acquire() as conn:
+        lead = await repository.create_subtask(
+            conn,
+            ticket_id=ticket_id,
+            title="Agent run",
+            description="Lead agent: plan and coordinate subtasks.",
+            order_index=0,
+        )
+    await run_subtask(pool, settings, lead.id)
