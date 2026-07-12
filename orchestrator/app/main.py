@@ -1,4 +1,9 @@
-"""FastAPI application entrypoint for the Ordinem orchestrator."""
+"""FastAPI application entrypoint for the Ordinem orchestrator.
+
+Each island is a self-contained package under app/islands/ that exposes one or
+more FastAPI routers; this module wires the shared core (db/migrations) and
+registers every island's routers. See docs/ARCHITECTURE.md for the pattern.
+"""
 
 from __future__ import annotations
 
@@ -7,11 +12,24 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .config import get_settings
-from .db import close_pool, get_pool, run_migrations
-from .routes import calendar, commit_plans, projects, reviews, tickets
+from app.core.config import get_settings
+from app.core.db import close_pool, get_pool, run_migrations
+from app.islands.calendar.router import router as calendar_router
+from app.islands.review.router import router as review_router
+from app.islands.tickets.commit_plans import router as commit_plans_router
+from app.islands.tickets.projects import router as projects_router
+from app.islands.tickets.router import router as tickets_router
 
 logger = logging.getLogger("ordinem.orchestrator")
+
+# Every island's routers, grouped by island for readability.
+ISLAND_ROUTERS = [
+    tickets_router,
+    projects_router,
+    commit_plans_router,
+    review_router,
+    calendar_router,
+]
 
 
 @asynccontextmanager
@@ -33,11 +51,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(tickets.router)
-app.include_router(commit_plans.router)
-app.include_router(projects.router)
-app.include_router(reviews.router)
-app.include_router(calendar.router)
+for _router in ISLAND_ROUTERS:
+    app.include_router(_router)
 
 
 @app.get("/health", tags=["meta"])

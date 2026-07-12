@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, type Component } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import type { Manifest } from "./types";
-import NSidebarItem from "./components/NSidebarItem.vue";
-import IslandPanel from "./components/IslandPanel.vue";
-import TicketsIsland from "./components/islands/TicketsIsland.vue";
-import CalendarIsland from "./components/islands/CalendarIsland.vue";
+import type { Manifest } from "./core/types";
+import NSidebarItem from "./ui/NSidebarItem.vue";
+import IslandPanel from "./core/IslandPanel.vue";
+import TicketsIsland from "./islands/tickets/TicketsIsland.vue";
+import CalendarIsland from "./islands/calendar/CalendarIsland.vue";
 
 // Map a manifest island's `component` key to a custom Vue component. Islands
 // without a match (or no `component`) fall back to the generic panel.
