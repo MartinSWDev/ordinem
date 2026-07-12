@@ -19,6 +19,17 @@ from app.islands.review.services.review import load_semantics, run_review
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 
+@router.get("/repos", response_model=list[repos.RepoRow])
+async def list_reviewable_repos(
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> list[repos.RepoRow]:
+    """Registered repos, for the island's repo picker. Repos without a
+    local_path can't be reviewed (no checkout) but are still listed so the UI can
+    explain why."""
+    async with pool.acquire() as conn:
+        return await repos.list_repos(conn)
+
+
 @router.post("", response_model=schemas.ReviewRow)
 async def create_review(
     body: schemas.ReviewRequest,
