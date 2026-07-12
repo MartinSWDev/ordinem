@@ -1,22 +1,4 @@
-export interface Island {
-  id: string;
-  title: string;
-  endpoint_base: string;
-  credential_ref: string;
-  /** Optional custom component key (e.g. "tickets"). Falls back to generic panel. */
-  component?: string | null;
-}
-
-export interface Manifest {
-  device_name: string;
-  islands: Island[];
-}
-
-export type FetchOutcome =
-  | { status: "ok"; code: number; body: string }
-  | { status: "error"; message: string };
-
-// --- Orchestrator ticket domain --------------------------------------------
+// Tickets island — orchestrator ticket domain types.
 
 export type TicketStatus =
   | "new"
@@ -120,16 +102,6 @@ export interface MyTicketsSyncResult {
   synced: number;
   tickets: Ticket[];
   unregistered_projects: string[];
-}
-
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  start: string;
-  end: string;
-  all_day: boolean;
-  location: string | null;
-  calendar_name: string;
 }
 
 // --- Review & ship (checks / commit / PR) ----------------------------------

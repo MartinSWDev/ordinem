@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import type { Island, FetchOutcome } from "../types";
-import NCard from "./NCard.vue";
-import NButton from "./NButton.vue";
+import type { Island, FetchOutcome } from "./types";
+import NCard from "../ui/NCard.vue";
+import NButton from "../ui/NButton.vue";
 
 const props = defineProps<{ island: Island }>();
 

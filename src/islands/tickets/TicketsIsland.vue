@@ -3,20 +3,20 @@ import { computed, onMounted, ref } from "vue";
 import type {
   CheckRun,
   CommitPlan,
-  Island,
   PrDraft,
   Ticket,
   TicketDetail,
   TicketStatus,
-} from "../../types";
+} from "./types";
+import type { Island } from "../../core/types";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useOrchestrator, ApiError } from "../../api/orchestrator";
-import NButton from "../NButton.vue";
-import NBadge from "../NBadge.vue";
-import LinkedText from "../LinkedText.vue";
+import { useTickets, ApiError } from "./api";
+import NButton from "../../ui/NButton.vue";
+import NBadge from "../../ui/NBadge.vue";
+import LinkedText from "../../ui/LinkedText.vue";
 
 const props = defineProps<{ island: Island }>();
-const api = useOrchestrator(props.island);
+const api = useTickets(props.island);
 
 const tickets = ref<Ticket[]>([]);
 const loading = ref(false);

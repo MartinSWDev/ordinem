@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { ApiError, useOrchestrator } from "../../api/orchestrator";
-import type { CalendarEvent, Island } from "../../types";
-import NButton from "../NButton.vue";
+import { ApiError, useCalendar } from "./api";
+import type { CalendarEvent } from "./types";
+import type { Island } from "../../core/types";
+import NButton from "../../ui/NButton.vue";
 
 const props = defineProps<{ island: Island }>();
-const api = useOrchestrator(props.island);
+const api = useCalendar(props.island);
 const events = ref<CalendarEvent[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
