@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     # Anthropic
     anthropic_api_key: str = ""
+    anthropic_base_url: str = ""  # blank = SDK default (api.anthropic.com)
+    review_model: str = "claude-opus-4-8"
 
     # Qwen fallback
     qwen_proxy_url: str = ""

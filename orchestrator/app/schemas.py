@@ -25,6 +25,7 @@ class RepoRow(BaseModel):
     jira_project_key: str
     git_remote_url: str
     docker_compose_path: str | None = None
+    local_path: str | None = None
     default_branch: str = "main"
     created_at: datetime
 
@@ -206,3 +207,43 @@ class MyTicketsSyncResult(BaseModel):
             "you seed a repos row for them."
         ),
     )
+
+
+# --------------------------------------------------------------------------- #
+# Pre-PR review
+# --------------------------------------------------------------------------- #
+
+
+class ReviewFinding(BaseModel):
+    file: str
+    line: int | None = None
+    severity: str  # high | medium | low
+    category: str
+    comment: str
+    suggestion: str | None = None
+
+
+class ReviewResult(BaseModel):
+    summary: str
+    findings: list[ReviewFinding]
+
+
+class ReviewRequest(BaseModel):
+    """POST /reviews — review a repo's branch diff before opening a PR."""
+
+    repo_id: UUID
+    base_branch: str | None = Field(
+        None, description="Defaults to the repo's default_branch."
+    )
+    head_branch: str | None = Field(
+        None, description="Defaults to the repo checkout's current branch."
+    )
+
+
+class ReviewRow(BaseModel):
+    id: UUID
+    repo_id: UUID
+    base_branch: str
+    head_branch: str
+    result: ReviewResult
+    created_at: datetime
