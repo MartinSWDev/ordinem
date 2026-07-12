@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     jira_api_token: str = ""
     jira_acceptance_criteria_field: str = ""
 
+    # Calendar (read-only private iCal feeds, comma-separated)
+    calendar_ics_urls: str = ""
+
+    @property
+    def calendar_urls(self) -> list[str]:
+        return [url.strip() for url in self.calendar_ics_urls.split(",") if url.strip()]
+
     # Anthropic
     anthropic_api_key: str = ""
     anthropic_base_url: str = ""  # blank = SDK default (api.anthropic.com)

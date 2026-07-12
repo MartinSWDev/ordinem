@@ -121,3 +121,13 @@ export interface MyTicketsSyncResult {
   tickets: Ticket[];
   unregistered_projects: string[];
 }
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  all_day: boolean;
+  location: string | null;
+  calendar_name: string;
+}

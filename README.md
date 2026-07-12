@@ -18,6 +18,13 @@ the repo and is expected to differ per machine. Example:
   "device_name": "work-macbook-air",
   "islands": [
     {
+      "id": "calendar",
+      "title": "Calendar",
+      "endpoint_base": "http://127.0.0.1:8787/calendar",
+      "credential_ref": "",
+      "component": "calendar"
+    },
+    {
       "id": "tickets",
       "title": "Tickets",
       "endpoint_base": "http://127.0.0.1:8787/tickets",
@@ -43,8 +50,8 @@ from the OS keychain (service name `ordinem`, account name equal to
 security add-generic-password -a shared_api_token -s ordinem -w "<token value>"
 ```
 
-`component` selects a custom UI for an island (currently `"tickets"` — the
-clickable ticket-workflow board that talks to the orchestrator). Omit it and
+`component` selects a custom UI for an island (currently `"tickets"` and
+`"calendar"`). Omit it and
 the island falls back to the generic fetch-and-display panel.
 
 Use the "Reload config" button in the sidebar to re-read the manifest
