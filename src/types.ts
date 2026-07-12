@@ -131,3 +131,34 @@ export interface CalendarEvent {
   location: string | null;
   calendar_name: string;
 }
+
+// --- Review & ship (checks / commit / PR) ----------------------------------
+
+export interface CheckRun {
+  id: string;
+  ticket_id: string;
+  check_name: string;
+  status: "pass" | "fail" | "error";
+  output: string | null;
+  run_at: string;
+}
+
+export interface CommitPlan {
+  id: string;
+  ticket_id: string;
+  subtask_id: string | null;
+  proposed_message: string;
+  files: unknown;
+  status: "proposed" | "approved" | "edited" | "committed" | "rejected";
+  sha: string | null;
+  created_at: string;
+}
+
+export interface PrDraft {
+  id: string;
+  ticket_id: string;
+  template_fields: Record<string, any>;
+  status: "draft" | "opened";
+  pr_url: string | null;
+  created_at: string;
+}

@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   CalendarEvent,
+  CheckRun,
+  CommitPlan,
   FetchOutcome,
   Island,
   MyTicketsSyncResult,
+  PrDraft,
   Ticket,
   TicketDetail,
 } from "../types";
@@ -21,16 +24,14 @@ export class ApiError extends Error {
  */
 export function useOrchestrator(island: Island) {
   const base = island.endpoint_base.replace(/\/$/, "");
+  // Orchestrator root (strip the trailing /tickets) for sibling resources.
+  const root = base.replace(/\/tickets$/, "");
   const cred = island.credential_ref;
 
-  async function request<T>(
-    method: string,
-    path: string,
-    body?: unknown
-  ): Promise<T> {
+  async function call<T>(method: string, url: string, body?: unknown): Promise<T> {
     const outcome = await invoke<FetchOutcome>("api_request", {
       method,
-      url: `${base}${path}`,
+      url,
       credentialRef: cred,
       body: body === undefined ? null : JSON.stringify(body),
     });
@@ -51,6 +52,9 @@ export function useOrchestrator(island: Island) {
     return JSON.parse(outcome.body) as T;
   }
 
+  const request = <T>(method: string, path: string, body?: unknown) =>
+    call<T>(method, `${base}${path}`, body);
+
   return {
     listCalendarEvents: () => request<CalendarEvent[]>("GET", ""),
     /** Direct URL to the attachment proxy — for use as an <img> src (bypasses
@@ -66,5 +70,15 @@ export function useOrchestrator(island: Island) {
         branch_name: branchName,
         confirm_active_docker_project: confirmDocker,
       }),
+    // --- review & ship ---
+    runChecks: (id: string) => request<CheckRun>("POST", `/${id}/checks`),
+    draftCommitPlan: (id: string) => request<CommitPlan>("POST", `/${id}/commit-plan`, {}),
+    approveCommitPlan: (planId: string, editedMessage: string | null) =>
+      call<CommitPlan>("POST", `${root}/commit-plans/${planId}/approve`, {
+        edited_message: editedMessage,
+      }),
+    generatePrDraft: (id: string) => request<PrDraft>("POST", `/${id}/pr-draft`),
+    markPrOpened: (id: string, prUrl: string) =>
+      request<PrDraft>("POST", `/${id}/pr-draft/opened`, { pr_url: prUrl }),
   };
 }

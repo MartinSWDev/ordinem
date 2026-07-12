@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import type { Island, Ticket, TicketDetail, TicketStatus } from "../../types";
+import type {
+  CheckRun,
+  CommitPlan,
+  Island,
+  PrDraft,
+  Ticket,
+  TicketDetail,
+  TicketStatus,
+} from "../../types";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useOrchestrator, ApiError } from "../../api/orchestrator";
 import NButton from "../NButton.vue";
@@ -102,6 +110,7 @@ async function select(t: Ticket) {
   detailLoading.value = true;
   branchName.value = t.branch_name ?? suggestBranch(t);
   confirmDocker.value = false;
+  resetShip();
   try {
     detail.value = await api.getTicket(t.id);
   } catch (e) {
@@ -137,6 +146,109 @@ async function process() {
     processError.value = e instanceof ApiError ? e.message : String(e);
   } finally {
     processing.value = false;
+  }
+}
+
+// --- review & ship ----------------------------------------------------------
+const shipError = ref<string | null>(null);
+const check = ref<CheckRun | null>(null);
+const checking = ref(false);
+const commitPlan = ref<CommitPlan | null>(null);
+const commitMessage = ref("");
+const committing = ref(false);
+const prDraft = ref<PrDraft | null>(null);
+const drafting = ref(false);
+const prUrl = ref("");
+
+// Show the ship section once the ticket has left the initial planning phase.
+const SHIP_STATUSES = new Set<TicketStatus>([
+  "review",
+  "checks_failed",
+  "ready_to_push",
+  "pushed",
+  "done",
+]);
+const canShip = computed(
+  () => !!detail.value && SHIP_STATUSES.has(detail.value.ticket.status)
+);
+
+function resetShip() {
+  shipError.value = null;
+  check.value = null;
+  commitPlan.value = null;
+  commitMessage.value = "";
+  prDraft.value = null;
+  prUrl.value = "";
+}
+
+async function refreshDetail() {
+  if (!detail.value) return;
+  detail.value = await api.getTicket(detail.value.ticket.id);
+  const idx = tickets.value.findIndex((t) => t.id === detail.value!.ticket.id);
+  if (idx >= 0) tickets.value[idx] = detail.value.ticket;
+}
+
+async function runChecks() {
+  if (!detail.value) return;
+  checking.value = true;
+  shipError.value = null;
+  try {
+    check.value = await api.runChecks(detail.value.ticket.id);
+    await refreshDetail();
+  } catch (e) {
+    shipError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    checking.value = false;
+  }
+}
+
+async function draftCommit() {
+  if (!detail.value) return;
+  shipError.value = null;
+  try {
+    commitPlan.value = await api.draftCommitPlan(detail.value.ticket.id);
+    commitMessage.value = commitPlan.value.proposed_message;
+  } catch (e) {
+    shipError.value = e instanceof ApiError ? e.message : String(e);
+  }
+}
+
+async function approveCommit() {
+  if (!commitPlan.value) return;
+  committing.value = true;
+  shipError.value = null;
+  try {
+    commitPlan.value = await api.approveCommitPlan(
+      commitPlan.value.id,
+      commitMessage.value
+    );
+  } catch (e) {
+    shipError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    committing.value = false;
+  }
+}
+
+async function generatePr() {
+  if (!detail.value) return;
+  drafting.value = true;
+  shipError.value = null;
+  try {
+    prDraft.value = await api.generatePrDraft(detail.value.ticket.id);
+  } catch (e) {
+    shipError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    drafting.value = false;
+  }
+}
+
+async function markOpened() {
+  if (!detail.value || !prUrl.value) return;
+  shipError.value = null;
+  try {
+    prDraft.value = await api.markPrOpened(detail.value.ticket.id, prUrl.value);
+  } catch (e) {
+    shipError.value = e instanceof ApiError ? e.message : String(e);
   }
 }
 
@@ -316,6 +428,66 @@ onMounted(load);
             This ticket's project has no registered repo, so it can't be dispatched.
             Register a repo for <b>{{ detail.ticket.jira_project_key }}</b> and re-sync.
           </p>
+        </div>
+
+        <!-- REVIEW & SHIP (post-agent) -->
+        <div class="section ship" v-if="canShip">
+          <div class="label">Review &amp; ship</div>
+
+          <!-- checks -->
+          <div class="ship-row">
+            <NButton size="sm" :disabled="checking" @click="runChecks">
+              {{ checking ? "Running…" : "Run checks" }}
+            </NButton>
+            <NBadge
+              v-if="check"
+              :tone="check.status === 'pass' ? 'success' : 'accent'"
+            >{{ check.check_name }} · {{ check.status }}</NBadge>
+          </div>
+          <pre v-if="check?.output" class="well small">{{ check.output }}</pre>
+
+          <!-- commit plan -->
+          <div class="ship-row">
+            <NButton size="sm" @click="draftCommit">Draft commit</NButton>
+            <NBadge v-if="commitPlan" tone="muted">{{ commitPlan.status }}</NBadge>
+          </div>
+          <template v-if="commitPlan">
+            <textarea
+              v-model="commitMessage"
+              class="input textarea"
+              rows="3"
+              placeholder="Commit message…"
+            />
+            <NButton
+              variant="primary"
+              size="sm"
+              :disabled="committing || !commitMessage"
+              @click="approveCommit"
+            >{{ committing ? "Committing…" : "Approve & commit" }}</NButton>
+          </template>
+
+          <!-- PR draft -->
+          <div class="ship-row">
+            <NButton size="sm" :disabled="drafting" @click="generatePr">
+              {{ drafting ? "Drafting…" : "Generate PR draft" }}
+            </NButton>
+            <NBadge v-if="prDraft" :tone="prDraft.status === 'opened' ? 'success' : 'muted'">
+              {{ prDraft.status }}
+            </NBadge>
+          </div>
+          <template v-if="prDraft">
+            <div v-for="(v, k) in (prDraft.template_fields.sections ?? {})" :key="k" class="pr-field">
+              <span class="mlabel">{{ k }}</span>
+              <span class="ltext">{{ v || "—" }}</span>
+            </div>
+            <div class="ship-row" v-if="prDraft.status !== 'opened'">
+              <input v-model="prUrl" class="input" placeholder="Paste opened PR URL…" />
+              <NButton size="sm" :disabled="!prUrl" @click="markOpened">Mark opened</NButton>
+            </div>
+            <a v-else class="lnk" @click.prevent="open(prDraft.pr_url)">{{ prDraft.pr_url }}</a>
+          </template>
+
+          <p v-if="shipError" class="err">{{ shipError }}</p>
         </div>
       </template>
     </div>
@@ -585,6 +757,53 @@ onMounted(load);
 
 .process {
   padding-top: var(--sp-4);
+}
+.ship {
+  padding-top: var(--sp-4);
+}
+.ship-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.ship-row .input {
+  flex: 1;
+  min-width: 140px;
+}
+.textarea {
+  height: auto;
+  padding: 10px 14px;
+  resize: vertical;
+  line-height: 1.4;
+}
+.well {
+  margin: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-in);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+.well.small {
+  max-height: 18vh;
+  font-size: 11px;
+}
+.pr-field {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.pr-field .ltext {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .field {
   display: flex;

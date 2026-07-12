@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from uuid import UUID
 
 import asyncpg
@@ -12,13 +13,31 @@ from fastapi.responses import Response, StreamingResponse
 from .. import repository, schemas
 from ..config import Settings
 from ..deps import get_config, get_pool
-from ..dispatch import DispatchError, prepare_dispatch
+from ..dispatch import DispatchError, prepare_dispatch, run_ticket_agent
 from ..services.checks import run_pre_push_checks
 from ..services.jira import JiraClient, JiraError, JiraNotConfigured
 from ..services.pr import build_template_fields
 from ..state_machine import TicketStatus
 
+logger = logging.getLogger("ordinem.orchestrator")
+
 router = APIRouter(prefix="/tickets", tags=["tickets"])
+
+# Hold strong references to detached background agent runs so they aren't
+# garbage-collected mid-flight.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _launch_agent(pool: asyncpg.Pool, settings: Settings, ticket_id: UUID) -> None:
+    async def _runner() -> None:
+        try:
+            await run_ticket_agent(pool, settings, ticket_id)
+        except Exception:  # noqa: BLE001 - detached; failures are recorded on the subtask
+            logger.exception("agent run failed for ticket %s", ticket_id)
+
+    task = asyncio.create_task(_runner())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.post("", response_model=schemas.TicketRow)
@@ -199,10 +218,12 @@ async def process_ticket(
     ticket_id: UUID,
     body: schemas.ProcessTicketRequest,
     pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
 ) -> schemas.TicketDetail:
     """Trigger the dispatch sequence (section 7). Runs the deterministic
-    preconditions + transition to in_progress synchronously; the agent run
-    itself proceeds against the SDK/worktree environment."""
+    preconditions + transition to in_progress synchronously, then launches the
+    agent run in the background (streaming agent_events the live view consumes).
+    Returns immediately with the ticket now in_progress."""
     try:
         await prepare_dispatch(
             pool,
@@ -212,6 +233,8 @@ async def process_ticket(
         )
     except DispatchError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+
+    _launch_agent(pool, settings, ticket_id)
 
     async with pool.acquire() as conn:
         detail = await repository.get_ticket_detail(conn, ticket_id)
