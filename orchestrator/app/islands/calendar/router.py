@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..config import Settings
-from ..deps import get_config
-from ..services.calendar import CalendarClient, CalendarError
+from app.core.config import Settings
+from app.core.deps import get_config
+from app.islands.calendar.service import CalendarClient, CalendarError
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 

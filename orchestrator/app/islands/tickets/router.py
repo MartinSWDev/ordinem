@@ -10,14 +10,15 @@ import asyncpg
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
-from .. import repository, schemas
-from ..config import Settings
-from ..deps import get_config, get_pool
-from ..dispatch import DispatchError, prepare_dispatch, run_ticket_agent
-from ..services.checks import run_pre_push_checks
-from ..services.jira import JiraClient, JiraError, JiraNotConfigured
-from ..services.pr import build_template_fields
-from ..state_machine import TicketStatus
+from app.core import repos
+from app.islands.tickets import repository, schemas
+from app.core.config import Settings
+from app.core.deps import get_config, get_pool
+from app.islands.tickets.dispatch import DispatchError, prepare_dispatch, run_ticket_agent
+from app.islands.tickets.services.checks import run_pre_push_checks
+from app.islands.tickets.services.jira import JiraClient, JiraError, JiraNotConfigured
+from app.islands.tickets.services.pr import build_template_fields
+from app.islands.tickets.state_machine import TicketStatus
 
 logger = logging.getLogger("ordinem.orchestrator")
 
@@ -59,7 +60,7 @@ async def ingest_ticket(
     async with pool.acquire() as conn:
         # Link to a repo if the project is registered; otherwise ingest anyway
         # (visible but unactionable until a repos row is seeded and re-synced).
-        repo = await repository.get_repo_by_project_key(conn, issue["project_key"])
+        repo = await repos.get_repo_by_project_key(conn, issue["project_key"])
         ticket = await repository.upsert_ticket_from_jira(
             conn,
             repo_id=repo.id if repo else None,
@@ -101,7 +102,7 @@ async def sync_my_tickets(
 
     unregistered: set[str] = set()
     async with pool.acquire() as conn:
-        repo_map = await repository.repo_id_by_project(conn)
+        repo_map = await repos.repo_id_by_project(conn)
         async with conn.transaction():
             for issue in issues:
                 project_key = issue["project_key"]

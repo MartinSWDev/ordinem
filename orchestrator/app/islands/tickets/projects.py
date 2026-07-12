@@ -9,10 +9,11 @@ from __future__ import annotations
 import asyncpg
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from .. import repository, schemas
-from ..config import Settings
-from ..deps import get_config, get_pool
-from ..services.jira import JiraClient, JiraError, JiraNotConfigured
+from app.core import repos
+from app.islands.tickets import repository, schemas
+from app.core.config import Settings
+from app.core.deps import get_config, get_pool
+from app.islands.tickets.services.jira import JiraClient, JiraError, JiraNotConfigured
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -35,7 +36,7 @@ async def sync_project(
         raise HTTPException(status_code=503, detail=str(exc))
 
     async with pool.acquire() as conn:
-        repo = await repository.get_repo_by_project_key(conn, project_key)
+        repo = await repos.get_repo_by_project_key(conn, project_key)
     if repo is None:
         raise HTTPException(
             status_code=422,

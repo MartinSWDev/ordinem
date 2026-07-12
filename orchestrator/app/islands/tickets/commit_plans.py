@@ -10,8 +10,8 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import repository, schemas
-from ..deps import get_pool
+from app.islands.tickets import repository, schemas
+from app.core.deps import get_pool
 
 router = APIRouter(prefix="/commit-plans", tags=["commit-plans"])
 

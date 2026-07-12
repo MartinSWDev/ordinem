@@ -9,11 +9,12 @@ from uuid import UUID
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 
-from .. import repository, schemas
-from ..config import Settings
-from ..deps import get_config, get_pool
-from ..services.git import GitError, branch_diff, current_branch
-from ..services.review import load_semantics, run_review
+from app.core import repos
+from app.islands.review import repository, schemas
+from app.core.config import Settings
+from app.core.deps import get_config, get_pool
+from app.islands.review.services.git import GitError, branch_diff, current_branch
+from app.islands.review.services.review import load_semantics, run_review
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -25,7 +26,7 @@ async def create_review(
     settings: Settings = Depends(get_config),
 ) -> schemas.ReviewRow:
     async with pool.acquire() as conn:
-        repo = await repository.get_repo(conn, body.repo_id)
+        repo = await repos.get_repo(conn, body.repo_id)
     if repo is None:
         raise HTTPException(status_code=404, detail="repo not found")
     if not repo.local_path:

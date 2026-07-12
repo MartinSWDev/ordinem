@@ -9,7 +9,7 @@ import httpx
 from dateutil.rrule import rrulestr
 from icalendar import Calendar
 
-from ..config import Settings
+from app.core.config import Settings
 
 
 class CalendarError(RuntimeError):

@@ -5,8 +5,8 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.config import Settings
-from app.services.jira import JiraClient
+from app.core.config import Settings
+from app.islands.tickets.services.jira import JiraClient
 
 
 def _settings() -> Settings:
@@ -71,7 +71,7 @@ async def test_search_raises_on_http_error(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
     client = JiraClient(_settings())
-    from app.services.jira import JiraError
+    from app.islands.tickets.services.jira import JiraError
 
     with pytest.raises(JiraError):
         await client.search_issues("nonsense")
@@ -140,7 +140,7 @@ def test_normalize_issue_carries_jira_and_columns():
 
 
 def test_adf_preserves_link_href_as_markdown():
-    from app.services.jira import _adf_to_text
+    from app.islands.tickets.services.jira import _adf_to_text
     adf = {"type": "paragraph", "content": [
         {"type": "text", "text": "see "},
         {"type": "text", "text": "the doc", "marks": [{"type": "link", "attrs": {"href": "https://ex.com/d"}}]},
@@ -150,7 +150,7 @@ def test_adf_preserves_link_href_as_markdown():
 
 
 def test_adf_marks_inline_media():
-    from app.services.jira import _adf_to_text
+    from app.islands.tickets.services.jira import _adf_to_text
     adf = {"type": "mediaSingle", "content": [
         {"type": "media", "attrs": {"id": "abc", "alt": "screenshot.png", "type": "file"}},
     ]}
@@ -159,7 +159,7 @@ def test_adf_marks_inline_media():
 
 
 async def test_fetch_attachment_rejects_foreign_host(monkeypatch):
-    from app.services.jira import JiraError
+    from app.islands.tickets.services.jira import JiraError
     client = JiraClient(_settings())
     with pytest.raises(JiraError):
         await client.fetch_attachment("https://evil.example.com/x.png")

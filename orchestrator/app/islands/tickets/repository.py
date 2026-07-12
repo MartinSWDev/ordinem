@@ -1,6 +1,6 @@
-"""Data access for the orchestrator. Thin async functions over asyncpg that
-return Pydantic row models. Status changes go through the state machine so no
-illegal transition can be persisted.
+"""Tickets island data access. Thin async functions over asyncpg returning
+Pydantic row models. Status changes go through the state machine so no illegal
+transition can be persisted.
 """
 
 from __future__ import annotations
@@ -10,71 +10,14 @@ from uuid import UUID
 
 import asyncpg
 
-from . import schemas
-from .state_machine import (
+from app.islands.tickets import schemas
+from app.islands.tickets.state_machine import (
     SubtaskStatus,
     TicketStatus,
     assert_subtask_transition,
     assert_ticket_transition,
     ticket_review_ready,
 )
-
-# --------------------------------------------------------------------------- #
-# Repos
-# --------------------------------------------------------------------------- #
-
-
-async def get_repo_by_project_key(
-    conn: asyncpg.Connection, project_key: str
-) -> schemas.RepoRow | None:
-    row = await conn.fetchrow(
-        "select * from repos where jira_project_key = $1", project_key
-    )
-    return schemas.RepoRow(**dict(row)) if row else None
-
-
-async def repo_id_by_project(conn: asyncpg.Connection) -> dict[str, UUID]:
-    """Map every registered project key -> repo id, for bulk ticket linking."""
-    rows = await conn.fetch("select id, jira_project_key from repos")
-    return {r["jira_project_key"]: r["id"] for r in rows}
-
-
-async def get_repo(conn: asyncpg.Connection, repo_id: UUID) -> schemas.RepoRow | None:
-    row = await conn.fetchrow("select * from repos where id = $1", repo_id)
-    return schemas.RepoRow(**dict(row)) if row else None
-
-
-# --------------------------------------------------------------------------- #
-# Reviews
-# --------------------------------------------------------------------------- #
-
-
-async def create_review(
-    conn: asyncpg.Connection,
-    *,
-    repo_id: UUID,
-    base_branch: str,
-    head_branch: str,
-    result: dict,
-) -> schemas.ReviewRow:
-    row = await conn.fetchrow(
-        """
-        insert into reviews (repo_id, base_branch, head_branch, result)
-        values ($1, $2, $3, $4)
-        returning *
-        """,
-        repo_id,
-        base_branch,
-        head_branch,
-        result,
-    )
-    return schemas.ReviewRow(**dict(row))
-
-
-async def get_review(conn: asyncpg.Connection, review_id: UUID) -> schemas.ReviewRow | None:
-    row = await conn.fetchrow("select * from reviews where id = $1", review_id)
-    return schemas.ReviewRow(**dict(row)) if row else None
-
 
 # --------------------------------------------------------------------------- #
 # Tickets

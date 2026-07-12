@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Settings
-from app.services import review as review_svc
-from app.services.git import branch_diff, current_branch
+from app.core.config import Settings
+from app.islands.review.services import review as review_svc
+from app.islands.review.services.git import branch_diff, current_branch
 
 
 def _run(*args: str, cwd: Path) -> None:

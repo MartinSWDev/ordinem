@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.state_machine import (
+from app.islands.tickets.state_machine import (
     IllegalTransition,
     SubtaskStatus,
     TicketStatus,

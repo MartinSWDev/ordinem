@@ -23,8 +23,8 @@ from __future__ import annotations
 from typing import Any, Protocol
 from uuid import UUID
 
-from ..config import Settings
-from .policy import build_agent_prompt
+from app.core.config import Settings
+from app.islands.tickets.services.policy import build_agent_prompt
 
 
 class AgentSdkNotInstalled(RuntimeError):

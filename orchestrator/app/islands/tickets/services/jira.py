@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from ..config import Settings
+from app.core.config import Settings
 
 
 class JiraNotConfigured(RuntimeError):

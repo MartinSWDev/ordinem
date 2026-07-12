@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-from app import dispatch as dispatch_mod
-from app.state_machine import SubtaskStatus
+from app.islands.tickets import dispatch as dispatch_mod
+from app.islands.tickets.state_machine import SubtaskStatus
 
 
 class _FakeConn:

@@ -14,10 +14,10 @@ from uuid import UUID
 
 import asyncpg
 
-from . import repository
-from .config import Settings
-from .services.agent import AgentDispatcher
-from .state_machine import SubtaskStatus, TicketStatus
+from app.islands.tickets import repository
+from app.core.config import Settings
+from app.islands.tickets.services.agent import AgentDispatcher
+from app.islands.tickets.state_machine import SubtaskStatus, TicketStatus
 
 
 class DispatchError(RuntimeError):

@@ -14,7 +14,8 @@ import asyncpg
 
 from .config import get_settings
 
-MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
+# app/core/db.py -> orchestrator/migrations
+MIGRATIONS_DIR = Path(__file__).resolve().parent.parent.parent / "migrations"
 
 _pool: asyncpg.Pool | None = None
 

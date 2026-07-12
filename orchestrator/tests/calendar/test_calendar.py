@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 
 import httpx
 
-from app.config import Settings
-from app.services.calendar import CalendarClient, parse_ics_events
+from app.core.config import Settings
+from app.islands.calendar.service import CalendarClient, parse_ics_events
 
 ICS = b"""BEGIN:VCALENDAR\r
 VERSION:2.0\r

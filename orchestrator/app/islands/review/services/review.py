@@ -15,8 +15,8 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
-from ..config import Settings
-from ..schemas import ReviewResult
+from app.core.config import Settings
+from app.islands.review.schemas import ReviewResult
 
 SEMANTICS_PATH = Path.home() / ".ordinem" / "review.md"
 
