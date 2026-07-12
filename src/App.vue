@@ -6,12 +6,14 @@ import NSidebarItem from "./ui/NSidebarItem.vue";
 import IslandPanel from "./core/IslandPanel.vue";
 import TicketsIsland from "./islands/tickets/TicketsIsland.vue";
 import CalendarIsland from "./islands/calendar/CalendarIsland.vue";
+import TodosIsland from "./islands/todos/TodosIsland.vue";
 
 // Map a manifest island's `component` key to a custom Vue component. Islands
 // without a match (or no `component`) fall back to the generic panel.
 const islandComponents: Record<string, Component> = {
   tickets: TicketsIsland,
   calendar: CalendarIsland,
+  todos: TodosIsland,
 };
 
 const manifest = ref<Manifest | null>(null);

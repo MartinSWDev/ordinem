@@ -19,6 +19,7 @@ from app.islands.review.router import router as review_router
 from app.islands.tickets.commit_plans import router as commit_plans_router
 from app.islands.tickets.projects import router as projects_router
 from app.islands.tickets.router import router as tickets_router
+from app.islands.todos.router import router as todos_router
 
 logger = logging.getLogger("ordinem.orchestrator")
 
@@ -29,6 +30,7 @@ ISLAND_ROUTERS = [
     commit_plans_router,
     review_router,
     calendar_router,
+    todos_router,
 ]
 
 
