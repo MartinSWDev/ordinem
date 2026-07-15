@@ -11,7 +11,14 @@ export type TicketStatus =
   | "done"
   | "abandoned";
 
-export type SubtaskStatus = "pending" | "running" | "done" | "failed" | "skipped";
+/** `proposed` is a planner suggestion: inert until a human approves it. */
+export type SubtaskStatus =
+  | "proposed"
+  | "pending"
+  | "running"
+  | "done"
+  | "failed"
+  | "skipped";
 
 export interface JiraComment {
   author: string | null;
@@ -91,6 +98,7 @@ export interface Subtask {
   description: string | null;
   order_index: number;
   status: SubtaskStatus;
+  needs_docker: boolean;
   backend: string | null;
   error: string | null;
 }
@@ -151,4 +159,11 @@ export interface NewLocalTicket {
   repo_id: string;
   description?: string | null;
   processing_instructions?: string | null;
+}
+
+/** One mini-ticket as proposed by the planner, or edited by you before approval. */
+export interface ProposedSubtask {
+  title: string;
+  description: string;
+  needs_docker: boolean;
 }

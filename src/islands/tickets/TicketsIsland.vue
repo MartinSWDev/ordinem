@@ -4,7 +4,9 @@ import type {
   CheckRun,
   CommitPlan,
   PrDraft,
+  ProposedSubtask,
   RepoRef,
+  SubtaskStatus,
   Ticket,
   TicketDetail,
   TicketStatus,
@@ -106,6 +108,13 @@ function statusTone(s: TicketStatus): "accent" | "success" | "muted" {
   return "muted";
 }
 const statusPulses = (s: TicketStatus) => s === "in_progress";
+/** Accent doubles as "wants your attention" here, as in the review island's
+ *  high-severity findings — the palette has no danger tone by design. */
+function subtaskTone(s: SubtaskStatus): "accent" | "success" | "muted" {
+  if (s === "done") return "success";
+  if (s === "running" || s === "failed") return "accent";
+  return "muted";
+}
 function priorityOf(t: Ticket): string | null {
   return t.jira?.priority ?? null;
 }
@@ -165,12 +174,108 @@ async function select(t: Ticket) {
   branchName.value = t.branch_name ?? suggestBranch(t);
   confirmDocker.value = false;
   resetShip();
+  resetPlan();
   try {
     detail.value = await api.getTicket(t.id);
+    loadProposedIntoEditor();
   } catch (e) {
     detailError.value = e instanceof ApiError ? e.message : String(e);
   } finally {
     detailLoading.value = false;
+  }
+}
+
+// --- plan -> gate -> dispatch ----------------------------------------------
+// `plan` is the editable copy of the proposal. Nothing here reaches an agent
+// until approvePlan() sends it, which is the whole point of the gate.
+const plan = ref<ProposedSubtask[]>([]);
+const planning = ref(false);
+const approving = ref(false);
+const dispatching = ref(false);
+const planError = ref<string | null>(null);
+
+/** Mini-tickets that already passed the gate — these are (or were) running. */
+const dispatched = computed(
+  () => detail.value?.subtasks.filter((s) => s.status !== "proposed") ?? []
+);
+const hasApproved = computed(() =>
+  (detail.value?.subtasks ?? []).some((s) => s.status === "pending")
+);
+const planNeedsDocker = computed(() => plan.value.some((m) => m.needs_docker));
+
+function resetPlan() {
+  plan.value = [];
+  planError.value = null;
+}
+
+/** A proposal survives a reload, so re-open it for editing rather than losing it. */
+function loadProposedIntoEditor() {
+  const proposed = detail.value?.subtasks.filter((s) => s.status === "proposed") ?? [];
+  plan.value = proposed.map((s) => ({
+    title: s.title,
+    description: s.description ?? "",
+    needs_docker: s.needs_docker,
+  }));
+}
+
+async function proposePlan() {
+  if (!detail.value) return;
+  planning.value = true;
+  planError.value = null;
+  try {
+    const proposed = await api.planTicket(detail.value.ticket.id);
+    plan.value = proposed.map((s) => ({
+      title: s.title,
+      description: s.description ?? "",
+      needs_docker: s.needs_docker,
+    }));
+    await refreshDetail();
+  } catch (e) {
+    planError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    planning.value = false;
+  }
+}
+
+function addMiniTicket() {
+  plan.value.push({ title: "", description: "", needs_docker: false });
+}
+
+function removeMiniTicket(i: number) {
+  plan.value.splice(i, 1);
+}
+
+async function approvePlan() {
+  if (!detail.value) return;
+  approving.value = true;
+  planError.value = null;
+  try {
+    await api.approvePlan(detail.value.ticket.id, plan.value);
+    plan.value = [];
+    await refreshDetail();
+  } catch (e) {
+    planError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    approving.value = false;
+  }
+}
+
+async function dispatchPlan() {
+  if (!detail.value) return;
+  dispatching.value = true;
+  planError.value = null;
+  try {
+    detail.value = await api.dispatchPlan(
+      detail.value.ticket.id,
+      branchName.value,
+      confirmDocker.value
+    );
+    const idx = tickets.value.findIndex((t) => t.id === detail.value!.ticket.id);
+    if (idx >= 0) tickets.value[idx] = detail.value.ticket;
+  } catch (e) {
+    planError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    dispatching.value = false;
   }
 }
 
@@ -494,13 +599,82 @@ onMounted(load);
           </div>
         </div>
 
-        <!-- Agent subtasks (ours, not Jira's) -->
-        <div class="section" v-if="detail.subtasks.length">
+        <!-- PLAN -> GATE -> DISPATCH -->
+        <div class="section plan" v-if="detail.ticket.actionable">
+          <div class="label">Plan</div>
+          <p class="muted small">
+            An agent proposes mini-tickets; you decide what actually runs. Each
+            approved one gets its own agent and worktree, in parallel — except
+            docker ones, which run one at a time.
+          </p>
+
+          <NButton size="sm" :disabled="planning" @click="proposePlan">
+            {{ planning ? "Planning…" : plan.length ? "Re-plan" : "Propose mini-tickets" }}
+          </NButton>
+
+          <!-- the editable proposal: nothing here has run yet -->
+          <div v-for="(m, i) in plan" :key="i" class="mini">
+            <div class="mini-head">
+              <span class="mini-n">{{ i + 1 }}</span>
+              <input v-model="m.title" class="input" placeholder="Mini-ticket title" />
+              <button class="drop" title="Drop this mini-ticket" @click="removeMiniTicket(i)">
+                ×
+              </button>
+            </div>
+            <textarea
+              v-model="m.description"
+              class="input"
+              rows="3"
+              placeholder="Everything the agent needs — it won't see the ticket."
+            />
+            <label class="check">
+              <input type="checkbox" v-model="m.needs_docker" />
+              Needs docker (runs alone, against the active OrbStack project)
+            </label>
+          </div>
+
+          <div class="plan-actions" v-if="plan.length || planning === false">
+            <NButton size="sm" @click="addMiniTicket">Add mini-ticket</NButton>
+            <NButton
+              v-if="plan.length"
+              size="sm"
+              variant="primary"
+              :disabled="approving || plan.some((m) => !m.title)"
+              @click="approvePlan"
+            >
+              {{ approving ? "Approving…" : `Approve ${plan.length}` }}
+            </NButton>
+          </div>
+          <p v-if="planNeedsDocker" class="muted small">
+            This plan has docker work — confirm the OrbStack project below before dispatching.
+          </p>
+
+          <!-- approved, waiting to be set off -->
+          <template v-if="hasApproved">
+            <div class="approved-note">
+              Approved and ready. Dispatch sends each mini-ticket to its own agent.
+            </div>
+            <NButton
+              variant="primary"
+              :disabled="dispatching || !branchName"
+              @click="dispatchPlan"
+            >
+              {{ dispatching ? "Dispatching…" : "Dispatch agents" }}
+            </NButton>
+          </template>
+          <p v-if="planError" class="err">{{ planError }}</p>
+        </div>
+
+        <!-- Agent subtasks (ours, not Jira's) — only what passed the gate -->
+        <div class="section" v-if="dispatched.length">
           <div class="label">Agent subtasks</div>
-          <div v-for="s in detail.subtasks" :key="s.id" class="subtask">
-            <NBadge :tone="s.status === 'done' ? 'success' : s.status === 'running' ? 'accent' : 'muted'"
-              :pulse="s.status === 'running'">{{ s.status }}</NBadge>
+          <div v-for="s in dispatched" :key="s.id" class="subtask">
+            <NBadge :tone="subtaskTone(s.status)" :pulse="s.status === 'running'">
+              {{ s.status }}
+            </NBadge>
             <span>{{ s.title }}</span>
+            <NBadge v-if="s.needs_docker">docker</NBadge>
+            <span v-if="s.error" class="err small">{{ s.error }}</span>
           </div>
         </div>
 
@@ -994,5 +1168,63 @@ onMounted(load);
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+.small {
+  font-size: var(--text-xs);
+}
+.mini {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-out);
+}
+.mini-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.mini-n {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  flex: none;
+}
+.mini textarea.input {
+  resize: vertical;
+}
+.drop {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: var(--shadow-out);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.drop:active {
+  box-shadow: var(--shadow-in);
+}
+.plan-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+.approved-note {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
 }
 </style>

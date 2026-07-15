@@ -6,7 +6,9 @@ import type {
   MyTicketsSyncResult,
   NewLocalTicket,
   PrDraft,
+  ProposedSubtask,
   RepoRef,
+  Subtask,
   Ticket,
   TicketDetail,
 } from "./types";
@@ -31,6 +33,17 @@ export function useTickets(island: Island) {
     getTicket: (id: string) => request<TicketDetail>("GET", `/${id}`),
     processTicket: (id: string, branchName: string, confirmDocker: boolean) =>
       request<TicketDetail>("POST", `/${id}/process`, {
+        branch_name: branchName,
+        confirm_active_docker_project: confirmDocker,
+      }),
+    // --- plan -> gate -> dispatch ---
+    /** Ask the planner for mini-tickets. Nothing runs until you approve. */
+    planTicket: (id: string) => request<Subtask[]>("POST", `/${id}/plan`),
+    /** The gate: your final list becomes the dispatchable work. */
+    approvePlan: (id: string, miniTickets: ProposedSubtask[]) =>
+      request<Subtask[]>("POST", `/${id}/plan/approve`, { mini_tickets: miniTickets }),
+    dispatchPlan: (id: string, branchName: string, confirmDocker: boolean) =>
+      request<TicketDetail>("POST", `/${id}/dispatch`, {
         branch_name: branchName,
         confirm_active_docker_project: confirmDocker,
       }),

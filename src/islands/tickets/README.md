@@ -21,6 +21,18 @@ written here via "New ticket", grouped under "Local"). A local ticket has no
 `jira_key` and no curated `jira` view, so the Jira-only chrome hides itself;
 everything downstream — instructions, agents, review & ship — is identical.
 
+## Plan -> gate -> dispatch
+
+"Propose mini-tickets" asks the planner to decompose the ticket; the proposals
+render as an **editable** list that has not run and will not run until you press
+Approve. You can rewrite any of them, drop them, or write your own from scratch
+— approving is what turns them into real work, and approving nothing rejects the
+plan. Each approved mini-ticket then gets its own agent and worktree, in
+parallel, except `needs_docker` ones which run one at a time.
+
+Only subtasks past the gate appear under "Agent subtasks"; `proposed` ones stay
+in the editor, so a proposal survives reselecting the ticket.
+
 ## Wiring
 
 Registered in `src/App.vue` under `component: "tickets"`. The manifest island's
