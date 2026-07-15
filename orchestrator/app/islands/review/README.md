@@ -26,5 +26,5 @@ fallback).
 
 ## Frontend island
 
-Not built yet — the backend is ready for a `review` island (register
-`component: "review"` in the manifest and add `src/islands/review/`).
+`src/islands/review/` renders this (repo picker → run review → findings by
+severity). The island's `endpoint_base` points at `…/reviews`.

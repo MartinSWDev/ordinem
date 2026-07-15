@@ -6,6 +6,7 @@ import NSidebarItem from "./ui/NSidebarItem.vue";
 import IslandPanel from "./core/IslandPanel.vue";
 import TicketsIsland from "./islands/tickets/TicketsIsland.vue";
 import CalendarIsland from "./islands/calendar/CalendarIsland.vue";
+import ReviewIsland from "./islands/review/ReviewIsland.vue";
 import TodosIsland from "./islands/todos/TodosIsland.vue";
 
 // Map a manifest island's `component` key to a custom Vue component. Islands
@@ -13,6 +14,7 @@ import TodosIsland from "./islands/todos/TodosIsland.vue";
 const islandComponents: Record<string, Component> = {
   tickets: TicketsIsland,
   calendar: CalendarIsland,
+  review: ReviewIsland,
   todos: TodosIsland,
 };
 

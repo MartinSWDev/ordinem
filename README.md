@@ -32,6 +32,13 @@ the repo and is expected to differ per machine. Example:
       "component": "tickets"
     },
     {
+      "id": "review",
+      "title": "Review",
+      "endpoint_base": "http://127.0.0.1:8787/reviews",
+      "credential_ref": "",
+      "component": "review"
+    },
+    {
       "id": "todos",
       "title": "Todos",
       "endpoint_base": "http://127.0.0.1:8787/todos",
