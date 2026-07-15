@@ -24,6 +24,8 @@ class TicketStatus(StrEnum):
 
 
 class SubtaskStatus(StrEnum):
+    # proposed by the planner, inert until a human approves it
+    PROPOSED = "proposed"
     PENDING = "pending"
     RUNNING = "running"
     DONE = "done"
@@ -51,6 +53,9 @@ _TERMINAL_TICKET = {TicketStatus.DONE, TicketStatus.ABANDONED}
 
 # section 5
 _SUBTASK_TRANSITIONS: dict[SubtaskStatus, set[SubtaskStatus]] = {
+    # the human gate: approved -> pending, rejected -> skipped. A proposed
+    # subtask can never go straight to running.
+    SubtaskStatus.PROPOSED: {SubtaskStatus.PENDING, SubtaskStatus.SKIPPED},
     SubtaskStatus.PENDING: {SubtaskStatus.RUNNING, SubtaskStatus.SKIPPED},
     SubtaskStatus.RUNNING: {SubtaskStatus.DONE, SubtaskStatus.FAILED},
     # requeued after a failure, possibly with backend switched to qwen

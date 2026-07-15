@@ -20,7 +20,7 @@ it owns ticket ingestion, the agent dispatch, and the review-and-ship stage.
 | `services/pr.py` | PR-template parsing + auto-fill |
 | `services/policy.py` | Fixed policy preamble prepended to every agent dispatch |
 
-## Data (see `migrations/001`, `002`, `003`, `005`)
+## Data (see `migrations/001`, `002`, `003`, `005`, `006`)
 
 `tickets`, `subtasks`, `agent_events`, `commit_plans`, `check_runs`, `pr_drafts`.
 Registered `repos` live in `app/core/repos.py` (shared).
@@ -30,6 +30,21 @@ Registered `repos` live in `app/core/repos.py` (shared).
 `tickets.source` is `jira` (ingested read-only; `jira_key` required) or `local`
 (self-authored via `POST /tickets/local`; no `jira_key`, never refreshed against
 Jira). See `migrations/005_local_tickets.sql`.
+
+## Plan -> gate -> dispatch
+
+`POST /tickets/{id}/plan` asks a planner (services/planner.py) to decompose the
+ticket into mini-tickets, stored as subtasks in `proposed` — an inert status the
+dispatcher ignores. `POST /tickets/{id}/plan/approve` is the human gate: the
+user's final, possibly-edited list replaces the proposal as `pending` work
+(an empty list rejects the plan). `POST /tickets/{id}/dispatch` then runs each
+approved mini-ticket in its own agent session and worktree, concurrently —
+except `needs_docker` ones, which serialize against the single active OrbStack
+project while the rest proceed alongside them.
+
+The state machine enforces the gate: `proposed -> running` is not a legal
+transition, so no route can dispatch unapproved work. See
+`migrations/006_plan_dispatch.sql`.
 
 ## Frontend island
 

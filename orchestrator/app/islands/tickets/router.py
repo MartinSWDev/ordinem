@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Coroutine
 from uuid import UUID
 
 import asyncpg
@@ -14,7 +15,13 @@ from app.core import repos
 from app.islands.tickets import repository, schemas
 from app.core.config import Settings
 from app.core.deps import get_config, get_pool
-from app.islands.tickets.dispatch import DispatchError, prepare_dispatch, run_ticket_agent
+from app.islands.tickets.dispatch import (
+    DispatchError,
+    prepare_dispatch,
+    run_ticket_agent,
+    run_ticket_plan,
+)
+from app.islands.tickets.services import planner
 from app.islands.tickets.services.checks import run_pre_push_checks
 from app.islands.tickets.services.jira import JiraClient, JiraError, JiraNotConfigured
 from app.islands.tickets.services.pr import build_template_fields
@@ -29,16 +36,23 @@ router = APIRouter(prefix="/tickets", tags=["tickets"])
 _background_tasks: set[asyncio.Task] = set()
 
 
-def _launch_agent(pool: asyncpg.Pool, settings: Settings, ticket_id: UUID) -> None:
+def _launch(coro: Coroutine, ticket_id: UUID, label: str) -> None:
+    """Run an agent workload detached from the request, holding a strong
+    reference so it isn't garbage-collected mid-flight."""
+
     async def _runner() -> None:
         try:
-            await run_ticket_agent(pool, settings, ticket_id)
+            await coro
         except Exception:  # noqa: BLE001 - detached; failures are recorded on the subtask
-            logger.exception("agent run failed for ticket %s", ticket_id)
+            logger.exception("%s failed for ticket %s", label, ticket_id)
 
     task = asyncio.create_task(_runner())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
+
+
+def _launch_agent(pool: asyncpg.Pool, settings: Settings, ticket_id: UUID) -> None:
+    _launch(run_ticket_agent(pool, settings, ticket_id), ticket_id, "agent run")
 
 
 @router.get("/repos", response_model=list[repos.RepoRow])
@@ -243,6 +257,92 @@ async def get_attachment(
         media_type=content_type,
         headers={"Cache-Control": "private, max-age=300"},
     )
+
+
+@router.post("/{ticket_id}/plan", response_model=list[schemas.SubtaskRow])
+async def plan_ticket_route(
+    ticket_id: UUID,
+    pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
+) -> list[schemas.SubtaskRow]:
+    """Propose mini-tickets for a ticket. Nothing is dispatched: the proposals
+    land in `proposed` and wait for /plan/approve. Runs inline (not detached) —
+    it's one structured call and the user is watching for the result."""
+    async with pool.acquire() as conn:
+        ticket = await repository.get_ticket(conn, ticket_id)
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="ticket not found")
+
+    try:
+        proposals = await planner.plan_ticket(
+            title=ticket.title,
+            description=ticket.description,
+            processing_instructions=ticket.processing_instructions,
+            settings=settings,
+            jira=ticket.jira.model_dump() if ticket.jira else None,
+        )
+    except Exception as exc:  # noqa: BLE001 - surface the LLM failure to the user
+        logger.exception("planning failed for ticket %s", ticket_id)
+        raise HTTPException(status_code=502, detail=f"planner failed: {exc}")
+
+    async with pool.acquire() as conn:
+        return await repository.replace_proposed_subtasks(conn, ticket_id, proposals)
+
+
+@router.post("/{ticket_id}/plan/approve", response_model=list[schemas.SubtaskRow])
+async def approve_plan_route(
+    ticket_id: UUID,
+    body: schemas.ApprovePlanRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> list[schemas.SubtaskRow]:
+    """The human gate. Persists the user's final, possibly-edited list as
+    dispatchable work. Approving an empty list rejects the plan."""
+    async with pool.acquire() as conn:
+        ticket = await repository.get_ticket(conn, ticket_id)
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="ticket not found")
+        return await repository.approve_plan(conn, ticket_id, body.mini_tickets)
+
+
+@router.post("/{ticket_id}/dispatch", response_model=schemas.TicketDetail, status_code=202)
+async def dispatch_plan_route(
+    ticket_id: UUID,
+    body: schemas.DispatchPlanRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
+) -> schemas.TicketDetail:
+    """Set the approved mini-tickets running, each in its own agent session and
+    worktree — parallel, except docker ones which serialize. Returns immediately
+    with the ticket in_progress; per-subtask progress arrives via agent_events."""
+    async with pool.acquire() as conn:
+        pending = await repository.get_dispatchable_subtasks(conn, ticket_id)
+    if not pending:
+        raise HTTPException(
+            status_code=409,
+            detail="no approved mini-tickets to dispatch; run /plan and approve one first",
+        )
+    if any(s.needs_docker for s in pending) and not body.confirm_active_docker_project:
+        raise HTTPException(
+            status_code=409,
+            detail="a mini-ticket needs docker; confirm the repo's compose project is the active OrbStack project",
+        )
+
+    try:
+        await prepare_dispatch(
+            pool,
+            ticket_id,
+            branch_name=body.branch_name,
+            confirm_active_docker_project=body.confirm_active_docker_project,
+        )
+    except DispatchError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    _launch(run_ticket_plan(pool, settings, ticket_id), ticket_id, "plan dispatch")
+
+    async with pool.acquire() as conn:
+        detail = await repository.get_ticket_detail(conn, ticket_id)
+    assert detail is not None
+    return detail
 
 
 @router.post("/{ticket_id}/process", response_model=schemas.TicketDetail, status_code=202)

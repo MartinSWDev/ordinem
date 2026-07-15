@@ -10,6 +10,7 @@ marked clearly below.
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
 import asyncpg
@@ -145,6 +146,48 @@ async def run_subtask(
             conn, subtask_id, SubtaskStatus.DONE, backend=completed_backend
         )
         await repository.maybe_advance_ticket_to_review(conn, subtask.ticket_id)
+
+
+async def run_ticket_plan(
+    pool: asyncpg.Pool,
+    settings: Settings,
+    ticket_id: UUID,
+) -> None:
+    """Run every approved mini-ticket for a ticket (called detached by /dispatch).
+
+    Mini-tickets are independent by construction — the planner is told to keep
+    them file-disjoint and each gets its own agent session and worktree — so the
+    non-docker ones run concurrently. The docker ones run one at a time, and
+    never alongside each other, because there is a single active OrbStack
+    project on this Mac and two agents pointing at it would collide.
+
+    A failing mini-ticket must not take its siblings down: run_subtask already
+    records the failure on its own row, so failures are collected and swallowed
+    here. The ticket advances to review only once every subtask is done or
+    skipped, which a failure prevents by design — the user requeues it.
+    """
+    async with pool.acquire() as conn:
+        subtasks = await repository.get_dispatchable_subtasks(conn, ticket_id)
+
+    parallel = [s for s in subtasks if not s.needs_docker]
+    serial = [s for s in subtasks if s.needs_docker]
+
+    async def _run(subtask_id: UUID) -> None:
+        try:
+            await run_subtask(pool, settings, subtask_id)
+        except Exception:  # noqa: BLE001 - already recorded on the subtask row
+            pass
+
+    # The docker chain is itself just one more concurrent participant: it runs
+    # its members in sequence while the parallel ones proceed alongside it.
+    async def _run_serial() -> None:
+        for s in serial:
+            await _run(s.id)
+
+    await asyncio.gather(*(_run(s.id) for s in parallel), _run_serial())
+
+    async with pool.acquire() as conn:
+        await repository.maybe_advance_ticket_to_review(conn, ticket_id)
 
 
 async def run_ticket_agent(

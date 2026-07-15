@@ -48,6 +48,7 @@ class SubtaskRow(BaseModel):
     description: str | None = None
     order_index: int = 0
     status: SubtaskStatus
+    needs_docker: bool = False
     backend: str | None = None
     worktree_path: str | None = None
     sdk_session_id: str | None = None
@@ -106,6 +107,35 @@ class CreateLocalTicketRequest(BaseModel):
     description: str | None = None
     processing_instructions: str | None = Field(
         None, description="How you want it approached; feeds the planner."
+    )
+
+
+class ProposedSubtask(BaseModel):
+    """One mini-ticket, as proposed by the planner or edited by the user."""
+
+    title: str
+    description: str
+    needs_docker: bool = False
+
+
+class ApprovePlanRequest(BaseModel):
+    """POST /tickets/:id/plan/approve — the human gate.
+
+    `mini_tickets` is the final list, in order: whatever the user kept, edited,
+    reordered or wrote themselves. Anything the planner proposed that isn't in
+    it is dropped (skipped), so an empty list rejects the plan outright.
+    """
+
+    mini_tickets: list[ProposedSubtask]
+
+
+class DispatchPlanRequest(BaseModel):
+    """POST /tickets/:id/dispatch — set the approved mini-tickets running."""
+
+    branch_name: str = Field(..., description="Base branch for the agents' worktrees.")
+    confirm_active_docker_project: bool = Field(
+        False,
+        description="Acknowledge the repo's compose project is the active OrbStack project; required if any mini-ticket needs docker.",
     )
 
 

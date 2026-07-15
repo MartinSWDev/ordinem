@@ -206,11 +206,14 @@ async def create_subtask(
     description: str | None,
     order_index: int,
     backend: str | None = None,
+    status: SubtaskStatus = SubtaskStatus.PENDING,
+    needs_docker: bool = False,
 ) -> schemas.SubtaskRow:
     row = await conn.fetchrow(
         """
-        insert into subtasks (ticket_id, title, description, order_index, backend)
-        values ($1, $2, $3, $4, $5)
+        insert into subtasks
+          (ticket_id, title, description, order_index, backend, status, needs_docker)
+        values ($1, $2, $3, $4, $5, $6, $7)
         returning *
         """,
         ticket_id,
@@ -218,8 +221,85 @@ async def create_subtask(
         description,
         order_index,
         backend,
+        str(status),
+        needs_docker,
     )
     return schemas.SubtaskRow(**dict(row))
+
+
+async def replace_proposed_subtasks(
+    conn: asyncpg.Connection,
+    ticket_id: UUID,
+    proposals: list[schemas.ProposedSubtask],
+) -> list[schemas.SubtaskRow]:
+    """Store a fresh plan, discarding any previous un-approved one.
+
+    Only `proposed` rows are deleted — re-planning a ticket must never destroy
+    subtasks that already ran or are running.
+    """
+    async with conn.transaction():
+        await conn.execute(
+            "delete from subtasks where ticket_id = $1 and status = 'proposed'",
+            ticket_id,
+        )
+        return [
+            await create_subtask(
+                conn,
+                ticket_id=ticket_id,
+                title=p.title,
+                description=p.description,
+                order_index=i,
+                status=SubtaskStatus.PROPOSED,
+                needs_docker=p.needs_docker,
+            )
+            for i, p in enumerate(proposals)
+        ]
+
+
+async def approve_plan(
+    conn: asyncpg.Connection,
+    ticket_id: UUID,
+    mini_tickets: list[schemas.ProposedSubtask],
+) -> list[schemas.SubtaskRow]:
+    """The human gate: persist the user's final list as `pending` work.
+
+    The user may have edited, reordered, dropped or added mini-tickets, so
+    rather than diffing against the proposal we drop the proposed rows and
+    insert what they approved. Returns the dispatchable subtasks.
+    """
+    async with conn.transaction():
+        await conn.execute(
+            "delete from subtasks where ticket_id = $1 and status = 'proposed'",
+            ticket_id,
+        )
+        approved = [
+            await create_subtask(
+                conn,
+                ticket_id=ticket_id,
+                title=m.title,
+                description=m.description,
+                order_index=i,
+                status=SubtaskStatus.PENDING,
+                needs_docker=m.needs_docker,
+            )
+            for i, m in enumerate(mini_tickets)
+        ]
+        ticket = await get_ticket(conn, ticket_id)
+        if ticket is not None and ticket.status == TicketStatus.NEW and approved:
+            await set_ticket_status(conn, ticket_id, TicketStatus.PLANNED)
+    return approved
+
+
+async def get_dispatchable_subtasks(
+    conn: asyncpg.Connection, ticket_id: UUID
+) -> list[schemas.SubtaskRow]:
+    """Approved-but-not-yet-run work, in plan order."""
+    rows = await conn.fetch(
+        "select * from subtasks where ticket_id = $1 and status = 'pending' "
+        "order by order_index, id",
+        ticket_id,
+    )
+    return [schemas.SubtaskRow(**dict(r)) for r in rows]
 
 
 async def set_subtask_status(
