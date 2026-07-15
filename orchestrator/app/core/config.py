@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Calendar (read-only private iCal feeds, comma-separated)
     calendar_ics_urls: str = ""
 
+    # Todoist (read-only task rollup)
+    todoist_api_token: str = ""
+
     @property
     def calendar_urls(self) -> list[str]:
         return [url.strip() for url in self.calendar_ics_urls.split(",") if url.strip()]
@@ -51,6 +54,10 @@ class Settings(BaseSettings):
     @property
     def jira_configured(self) -> bool:
         return bool(self.jira_base_url and self.jira_email and self.jira_api_token)
+
+    @property
+    def todoist_configured(self) -> bool:
+        return bool(self.todoist_api_token)
 
     @property
     def qwen_configured(self) -> bool:

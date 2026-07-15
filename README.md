@@ -41,8 +41,9 @@ the repo and is expected to differ per machine. Example:
     {
       "id": "todos",
       "title": "Todos",
-      "endpoint_base": "https://orchestrator.<tailnet>.ts.net/api/todos",
-      "credential_ref": "shared_api_token"
+      "endpoint_base": "http://127.0.0.1:8787/todos",
+      "credential_ref": "",
+      "component": "todos"
     }
   ]
 }
@@ -57,8 +58,8 @@ from the OS keychain (service name `ordinem`, account name equal to
 security add-generic-password -a shared_api_token -s ordinem -w "<token value>"
 ```
 
-`component` selects a custom UI for an island (currently `"tickets"` and
-`"calendar"`). Omit it and
+`component` selects a custom UI for an island (currently `"tickets"`,
+`"calendar"`, and `"todos"`). Omit it and
 the island falls back to the generic fetch-and-display panel.
 
 Use the "Reload config" button in the sidebar to re-read the manifest
