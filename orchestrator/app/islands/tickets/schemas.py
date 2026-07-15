@@ -18,7 +18,9 @@ class TicketRow(BaseModel):
     id: UUID
     repo_id: UUID | None = None
     jira_project_key: str | None = None
-    jira_key: str
+    # Local tickets (source="local") have no Jira key or curated `jira` view.
+    jira_key: str | None = None
+    source: str = "jira"
     title: str
     description: str | None = None
     # Curated, LLM-useful projection of the Jira issue (comments, acceptance
@@ -94,6 +96,17 @@ class PrDraftRow(BaseModel):
 # --------------------------------------------------------------------------- #
 # Request models
 # --------------------------------------------------------------------------- #
+
+
+class CreateLocalTicketRequest(BaseModel):
+    """POST /tickets/local — write your own ticket (no Jira involved)."""
+
+    title: str = Field(..., description="What needs doing.")
+    repo_id: UUID = Field(..., description="Which registered repo the agent works in.")
+    description: str | None = None
+    processing_instructions: str | None = Field(
+        None, description="How you want it approached; feeds the planner."
+    )
 
 
 class IngestTicketRequest(BaseModel):

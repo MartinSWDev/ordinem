@@ -13,6 +13,14 @@ commit plan, PR draft).
 | `api.ts` | `useTickets(island)` — typed calls over the shared `islandClient` |
 | `types.ts` | Ticket / Jira / check / commit-plan / PR-draft types |
 
+## Ticket sources
+
+Tickets are either **Jira** (`source: "jira"`, synced read-only via
+"Sync from Jira", grouped by project key) or **local** (`source: "local"`,
+written here via "New ticket", grouped under "Local"). A local ticket has no
+`jira_key` and no curated `jira` view, so the Jira-only chrome hides itself;
+everything downstream — instructions, agents, review & ship — is identical.
+
 ## Wiring
 
 Registered in `src/App.vue` under `component: "tickets"`. The manifest island's

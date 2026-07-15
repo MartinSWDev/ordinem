@@ -20,10 +20,16 @@ it owns ticket ingestion, the agent dispatch, and the review-and-ship stage.
 | `services/pr.py` | PR-template parsing + auto-fill |
 | `services/policy.py` | Fixed policy preamble prepended to every agent dispatch |
 
-## Data (see `migrations/001`, `002`, `003`)
+## Data (see `migrations/001`, `002`, `003`, `005`)
 
 `tickets`, `subtasks`, `agent_events`, `commit_plans`, `check_runs`, `pr_drafts`.
 Registered `repos` live in `app/core/repos.py` (shared).
+
+## Ticket sources
+
+`tickets.source` is `jira` (ingested read-only; `jira_key` required) or `local`
+(self-authored via `POST /tickets/local`; no `jira_key`, never refreshed against
+Jira). See `migrations/005_local_tickets.sql`.
 
 ## Frontend island
 

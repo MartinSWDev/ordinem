@@ -41,6 +41,36 @@ def _launch_agent(pool: asyncpg.Pool, settings: Settings, ticket_id: UUID) -> No
     task.add_done_callback(_background_tasks.discard)
 
 
+@router.get("/repos", response_model=list[repos.RepoRow])
+async def list_registered_repos(
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> list[repos.RepoRow]:
+    """Registered repos, for the new-ticket repo picker."""
+    async with pool.acquire() as conn:
+        return await repos.list_repos(conn)
+
+
+@router.post("/local", response_model=schemas.TicketRow, status_code=201)
+async def create_local_ticket(
+    body: schemas.CreateLocalTicketRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> schemas.TicketRow:
+    """Write your own ticket — no Jira. Used for personal work; the ticket then
+    flows through the same pipeline (instructions -> plan -> mini-tickets ->
+    agents -> review & ship)."""
+    async with pool.acquire() as conn:
+        repo = await repos.get_repo(conn, body.repo_id)
+        if repo is None:
+            raise HTTPException(status_code=422, detail="repo not found")
+        return await repository.create_local_ticket(
+            conn,
+            repo_id=repo.id,
+            title=body.title,
+            description=body.description,
+            processing_instructions=body.processing_instructions,
+        )
+
+
 @router.post("", response_model=schemas.TicketRow)
 async def ingest_ticket(
     body: schemas.IngestTicketRequest,
@@ -159,7 +189,8 @@ async def get_ticket(
     if detail is None:
         raise HTTPException(status_code=404, detail="ticket not found")
 
-    if refresh and settings.jira_configured:
+    # Local tickets have no Jira counterpart — never try to refresh them.
+    if refresh and settings.jira_configured and detail.ticket.jira_key:
         try:
             issue = await JiraClient(settings).fetch_issue(detail.ticket.jira_key)
             async with pool.acquire() as conn:
