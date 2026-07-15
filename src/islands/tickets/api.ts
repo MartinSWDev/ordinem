@@ -4,7 +4,9 @@ import type {
   CheckRun,
   CommitPlan,
   MyTicketsSyncResult,
+  NewLocalTicket,
   PrDraft,
+  RepoRef,
   Ticket,
   TicketDetail,
 } from "./types";
@@ -24,6 +26,8 @@ export function useTickets(island: Island) {
     listTickets: (project?: string) =>
       request<Ticket[]>("GET", `${project ? `?project=${encodeURIComponent(project)}` : ""}`),
     syncMyTickets: () => request<MyTicketsSyncResult>("POST", "/sync"),
+    listRepos: () => request<RepoRef[]>("GET", "/repos"),
+    createLocalTicket: (t: NewLocalTicket) => request<Ticket>("POST", "/local", t),
     getTicket: (id: string) => request<TicketDetail>("GET", `/${id}`),
     processTicket: (id: string, branchName: string, confirmDocker: boolean) =>
       request<TicketDetail>("POST", `/${id}/process`, {

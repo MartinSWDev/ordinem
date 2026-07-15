@@ -68,6 +68,30 @@ async def upsert_ticket_from_jira(
     return schemas.TicketRow(**dict(row))
 
 
+async def create_local_ticket(
+    conn: asyncpg.Connection,
+    *,
+    repo_id: UUID,
+    title: str,
+    description: str | None,
+    processing_instructions: str | None,
+) -> schemas.TicketRow:
+    """Create a self-authored ticket (source='local'). No Jira key, no curated
+    jira view — the rest of the pipeline treats it identically."""
+    row = await conn.fetchrow(
+        """
+        insert into tickets (repo_id, source, title, description, processing_instructions)
+        values ($1, 'local', $2, $3, $4)
+        returning *
+        """,
+        repo_id,
+        title,
+        description,
+        processing_instructions,
+    )
+    return schemas.TicketRow(**dict(row))
+
+
 async def refresh_ticket_jira(
     conn: asyncpg.Connection,
     ticket_id: UUID,

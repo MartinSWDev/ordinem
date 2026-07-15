@@ -4,6 +4,7 @@ import type {
   CheckRun,
   CommitPlan,
   PrDraft,
+  RepoRef,
   Ticket,
   TicketDetail,
   TicketStatus,
@@ -13,6 +14,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useTickets, ApiError } from "./api";
 import NButton from "../../ui/NButton.vue";
 import NBadge from "../../ui/NBadge.vue";
+import NCard from "../../ui/NCard.vue";
 import LinkedText from "../../ui/LinkedText.vue";
 
 const props = defineProps<{ island: Island }>();
@@ -35,11 +37,63 @@ const confirmDocker = ref(false);
 const processing = ref(false);
 const processError = ref<string | null>(null);
 
+// --- new (local) ticket -----------------------------------------------------
+const showNew = ref(false);
+const repos = ref<RepoRef[]>([]);
+const newTitle = ref("");
+const newRepoId = ref("");
+const newDescription = ref("");
+const newInstructions = ref("");
+const creating = ref(false);
+const newError = ref<string | null>(null);
+
+async function openNew() {
+  showNew.value = true;
+  newError.value = null;
+  if (!repos.value.length) {
+    try {
+      repos.value = await api.listRepos();
+      if (!newRepoId.value && repos.value.length) newRepoId.value = repos.value[0].id;
+    } catch (e) {
+      newError.value = e instanceof ApiError ? e.message : String(e);
+    }
+  }
+}
+
+function resetNew() {
+  showNew.value = false;
+  newTitle.value = "";
+  newDescription.value = "";
+  newInstructions.value = "";
+  newError.value = null;
+}
+
+async function createLocal() {
+  if (!newTitle.value || !newRepoId.value) return;
+  creating.value = true;
+  newError.value = null;
+  try {
+    const t = await api.createLocalTicket({
+      title: newTitle.value,
+      repo_id: newRepoId.value,
+      description: newDescription.value || null,
+      processing_instructions: newInstructions.value || null,
+    });
+    tickets.value = [t, ...tickets.value];
+    resetNew();
+    await select(t);
+  } catch (e) {
+    newError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    creating.value = false;
+  }
+}
+
 // --- grouping ---------------------------------------------------------------
 const groups = computed(() => {
   const byProject = new Map<string, Ticket[]>();
   for (const t of tickets.value) {
-    const key = t.jira_project_key ?? "—";
+    const key = t.jira_project_key ?? (t.source === "local" ? "Local" : "—");
     (byProject.get(key) ?? byProject.set(key, []).get(key)!).push(t);
   }
   return [...byProject.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -126,7 +180,8 @@ function suggestBranch(t: Ticket): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 32);
-  return `feat/${t.jira_key.toLowerCase()}-${slug}`;
+  const prefix = t.jira_key ? `${t.jira_key.toLowerCase()}-` : "";
+  return `feat/${prefix}${slug}`;
 }
 
 async function process() {
@@ -263,16 +318,58 @@ onMounted(load);
         <h2>Tickets</h2>
         <span class="count">{{ tickets.length }}</span>
         <div class="spacer" />
+        <NButton size="sm" @click="openNew">New ticket</NButton>
         <NButton size="sm" variant="primary" :disabled="syncing" @click="sync">
           {{ syncing ? "Syncing…" : "Sync from Jira" }}
         </NButton>
       </div>
 
+      <!-- NEW LOCAL TICKET -->
+      <NCard v-if="showNew" class="new-form">
+        <label>
+          <span>Title</span>
+          <input v-model="newTitle" placeholder="Add live agent progress to the ticket view" />
+        </label>
+        <label>
+          <span>Repo</span>
+          <select v-model="newRepoId">
+            <option v-for="r in repos" :key="r.id" :value="r.id">{{ r.name }}</option>
+          </select>
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea v-model="newDescription" rows="3" placeholder="What needs doing, and why." />
+        </label>
+        <label>
+          <span>Processing instructions</span>
+          <textarea
+            v-model="newInstructions"
+            rows="2"
+            placeholder="How the agents should approach it."
+          />
+        </label>
+        <p v-if="!repos.length" class="muted">
+          No registered repos — add one before creating a local ticket.
+        </p>
+        <p v-if="newError" class="err">{{ newError }}</p>
+        <div class="form-actions">
+          <NButton size="sm" @click="resetNew">Cancel</NButton>
+          <NButton
+            size="sm"
+            variant="primary"
+            :disabled="creating || !newTitle || !newRepoId"
+            @click="createLocal"
+          >
+            {{ creating ? "Creating…" : "Create" }}
+          </NButton>
+        </div>
+      </NCard>
+
       <p v-if="syncNote" class="note">{{ syncNote }}</p>
       <p v-if="error" class="err">{{ error }}</p>
       <p v-if="loading" class="muted">Loading…</p>
       <p v-else-if="!tickets.length && !error" class="muted">
-        No tickets yet — hit “Sync from Jira”.
+        No tickets yet — hit “New ticket”, or “Sync from Jira” for work tickets.
       </p>
 
       <div v-for="[project, items] in groups" :key="project" class="group">
@@ -287,7 +384,7 @@ onMounted(load);
           @click="select(t)"
         >
           <div class="row1">
-            <span class="key">{{ t.jira_key }}</span>
+            <span class="key">{{ t.jira_key ?? "LOCAL" }}</span>
             <NBadge :tone="statusTone(t.status)" :pulse="statusPulses(t.status)">
               {{ t.status }}
             </NBadge>
@@ -311,7 +408,7 @@ onMounted(load);
 
       <template v-else-if="detail">
         <div class="detail-head">
-          <span class="key">{{ detail.ticket.jira_key }}</span>
+          <span class="key">{{ detail.ticket.jira_key ?? "LOCAL" }}</span>
           <NBadge :tone="statusTone(detail.ticket.status)" :pulse="statusPulses(detail.ticket.status)">
             {{ detail.ticket.status }}
           </NBadge>
@@ -857,5 +954,45 @@ onMounted(load);
   color: var(--accent);
   font-size: 13px;
   margin: 0;
+}
+
+.new-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.new-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.new-form label > span {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.new-form input,
+.new-form select,
+.new-form textarea {
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-in);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  resize: vertical;
+}
+.new-form input:focus,
+.new-form select:focus,
+.new-form textarea:focus {
+  outline: 1px solid var(--accent);
+}
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 </style>

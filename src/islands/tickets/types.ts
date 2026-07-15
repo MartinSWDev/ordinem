@@ -70,7 +70,9 @@ export interface Ticket {
   id: string;
   repo_id: string | null;
   jira_project_key: string | null;
-  jira_key: string;
+  /** Local (self-authored) tickets have no Jira key or curated `jira` view. */
+  jira_key: string | null;
+  source: "jira" | "local";
   title: string;
   description: string | null;
   jira: NormalizedJira | null;
@@ -133,4 +135,20 @@ export interface PrDraft {
   status: "draft" | "opened";
   pr_url: string | null;
   created_at: string;
+}
+
+/** A registered repo — the new-ticket repo picker. */
+export interface RepoRef {
+  id: string;
+  name: string;
+  jira_project_key: string;
+  local_path: string | null;
+  default_branch: string;
+}
+
+export interface NewLocalTicket {
+  title: string;
+  repo_id: string;
+  description?: string | null;
+  processing_instructions?: string | null;
 }
