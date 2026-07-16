@@ -55,29 +55,44 @@ class AgentDispatcher:
         ticket_description: str | None,
         processing_instructions: str | None,
         acceptance_criteria: str | None = None,
+        subtask_title: str | None = None,
+        subtask_description: str | None = None,
         backend: str = "claude",
         cwd: str,
-    ) -> tuple[str, str | None]:
+        resume_session_id: str | None = None,
+        prompt_override: str | None = None,
+    ) -> tuple[str, str | None, str | None]:
         """Run one dispatch for a subtask and stream its events. Returns the
-        backend that completed it and the agent's final report text. On a
+        backend that completed it, the agent's final report text, and the CLI
+        session id (for the conversation loop). With resume_session_id the
+        prompt_override (the user's reply) continues that session. On a
         StopFailure that looks like a rate-limit/auth issue, re-dispatches once
         on 'local' if a proxy is configured."""
         runner = build_backend(self._settings, backend)
-        prompt = build_agent_prompt(
+        prompt = prompt_override or build_agent_prompt(
             branch_name=branch_name,
             ticket_title=ticket_title,
             ticket_description=ticket_description,
             processing_instructions=processing_instructions,
             acceptance_criteria=acceptance_criteria,
+            subtask_title=subtask_title,
+            subtask_description=subtask_description,
         )
 
         hit_failure = False
         result: str | None = None
+        session_id: str | None = resume_session_id
         async for event_type, payload in runner.run(
-            prompt, cwd=cwd, timeout_seconds=self._settings.agent_timeout_seconds
+            prompt,
+            cwd=cwd,
+            timeout_seconds=self._settings.agent_timeout_seconds,
+            resume_session_id=resume_session_id,
         ):
             payload["backend"] = backend
             await self._sink.record_event(subtask_id, event_type, payload)
+            sid = payload.get("stream", {}).get("session_id")
+            if sid:
+                session_id = str(sid)
             if event_type in ("stop", "stop_failure"):
                 raw = payload.get("stream", {}).get("result")
                 result = str(raw) if raw is not None else result
@@ -87,6 +102,7 @@ class AgentDispatcher:
 
         if hit_failure and backend != "local" and self._settings.local_proxy:
             # Section 7.6: re-dispatch the failed subtask on the local proxy.
+            # A resumed session can't hop backends, so the fallback starts fresh.
             return await self.dispatch(
                 subtask_id=subtask_id,
                 branch_name=branch_name,
@@ -94,6 +110,8 @@ class AgentDispatcher:
                 ticket_description=ticket_description,
                 processing_instructions=processing_instructions,
                 acceptance_criteria=acceptance_criteria,
+                subtask_title=subtask_title,
+                subtask_description=subtask_description,
                 backend="local",
                 cwd=cwd,
             )
@@ -102,4 +120,4 @@ class AgentDispatcher:
                 f"backend '{backend}' stopped on a rate-limit/auth failure and "
                 "no local fallback is configured"
             )
-        return backend, result
+        return backend, result, session_id

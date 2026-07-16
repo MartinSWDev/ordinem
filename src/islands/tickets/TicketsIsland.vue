@@ -4,6 +4,7 @@ import type {
   AgentBackend,
   CheckRun,
   CommitPlan,
+  Conversation,
   PrDraft,
   ProposedSubtask,
   RepoRef,
@@ -65,28 +66,83 @@ const noBackendAvailable = computed(
 );
 
 // --- live updates -------------------------------------------------------------
-// Agent runs mutate state in the background; while anything is running, poll
-// the detail (Jira-refresh skipped) so statuses/badges move without the user
-// clicking away and back.
+// Agent runs mutate state in the background; while a ticket is open, poll the
+// detail + conversation (Jira-refresh skipped) so statuses/badges/replies move
+// without the user clicking away and back.
 const POLL_MS = 2500;
 let pollTimer: number | undefined;
-const agentsActive = computed(
-  () =>
-    detail.value?.ticket.status === "in_progress" ||
-    (detail.value?.subtasks ?? []).some((s) => s.status === "running")
-);
-
 async function refreshQuiet() {
   if (!detail.value) return;
   const id = detail.value.ticket.id;
   try {
-    const d = await api.getTicket(id, false);
+    const [d, c] = await Promise.all([
+      api.getTicket(id, false),
+      api.getConversation(id),
+    ]);
     if (selectedId.value !== id) return; // user moved on mid-flight
     detail.value = d;
+    conversation.value = c;
     const idx = tickets.value.findIndex((t) => t.id === id);
     if (idx >= 0) tickets.value[idx] = d.ticket;
   } catch {
     // transient poll failure — the next tick retries
+  }
+}
+
+// --- agent conversation -------------------------------------------------------
+const conversation = ref<Conversation | null>(null);
+const replyText = ref("");
+const replying = ref(false);
+const instructions = ref("");
+const savingInstructions = ref(false);
+const instructionsSaved = ref(false);
+
+const convoSubtask = computed(() => conversation.value?.subtask ?? null);
+const canReply = computed(
+  () =>
+    !!convoSubtask.value?.sdk_session_id &&
+    (convoSubtask.value.status === "awaiting_input" ||
+      convoSubtask.value.status === "done")
+);
+
+async function saveInstructions() {
+  if (!detail.value) return;
+  savingInstructions.value = true;
+  instructionsSaved.value = false;
+  try {
+    const t = await api.updateInstructions(
+      detail.value.ticket.id,
+      instructions.value || null
+    );
+    detail.value.ticket = t;
+    instructionsSaved.value = true;
+    window.setTimeout(() => (instructionsSaved.value = false), 2000);
+  } catch (e) {
+    processError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    savingInstructions.value = false;
+  }
+}
+
+async function sendReply() {
+  if (!detail.value || !replyText.value) return;
+  replying.value = true;
+  processError.value = null;
+  const text = replyText.value;
+  try {
+    detail.value = await api.replyToAgent(detail.value.ticket.id, text);
+    // Show the reply immediately; the poll takes over from here.
+    conversation.value?.messages.push({
+      role: "user",
+      text,
+      at: new Date().toISOString(),
+    });
+    if (conversation.value?.subtask) conversation.value.subtask.status = "running";
+    replyText.value = "";
+  } catch (e) {
+    processError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    replying.value = false;
   }
 }
 
@@ -163,9 +219,11 @@ const statusPulses = (s: TicketStatus) => s === "in_progress";
  *  high-severity findings — the palette has no danger tone by design. */
 function subtaskTone(s: SubtaskStatus): "accent" | "success" | "muted" {
   if (s === "done") return "success";
-  if (s === "running" || s === "failed") return "accent";
+  if (s === "running" || s === "failed" || s === "awaiting_input") return "accent";
   return "muted";
 }
+const subtaskPulses = (s: SubtaskStatus) => s === "running" || s === "awaiting_input";
+const subtaskLabel = (s: SubtaskStatus) => (s === "awaiting_input" ? "awaiting you" : s);
 function priorityOf(t: Ticket): string | null {
   return t.jira?.priority ?? null;
 }
@@ -219,16 +277,20 @@ async function sync() {
 async function select(t: Ticket) {
   selectedId.value = t.id;
   detail.value = null;
+  conversation.value = null;
   detailError.value = null;
   processError.value = null;
   detailLoading.value = true;
   branchName.value = t.branch_name ?? suggestBranch(t);
   confirmDocker.value = false;
+  replyText.value = "";
   resetShip();
   resetPlan();
   try {
     detail.value = await api.getTicket(t.id);
+    instructions.value = detail.value.ticket.processing_instructions ?? "";
     loadProposedIntoEditor();
+    conversation.value = await api.getConversation(t.id);
   } catch (e) {
     detailError.value = e instanceof ApiError ? e.message : String(e);
   } finally {
@@ -469,7 +531,7 @@ onMounted(() => {
   load();
   loadBackends();
   pollTimer = window.setInterval(() => {
-    if (agentsActive.value) refreshQuiet();
+    if (detail.value && !detailLoading.value) refreshQuiet();
   }, POLL_MS);
 });
 onUnmounted(() => window.clearInterval(pollTimer));
@@ -550,7 +612,8 @@ onUnmounted(() => window.clearInterval(pollTimer));
         >
           <div class="row1">
             <span class="key">{{ t.jira_key ?? "LOCAL" }}</span>
-            <NBadge :tone="statusTone(t.status)" :pulse="statusPulses(t.status)">
+            <NBadge v-if="t.awaiting_input" tone="accent" pulse>needs you</NBadge>
+            <NBadge v-else :tone="statusTone(t.status)" :pulse="statusPulses(t.status)">
               {{ t.status }}
             </NBadge>
           </div>
@@ -576,6 +639,9 @@ onUnmounted(() => window.clearInterval(pollTimer));
           <span class="key">{{ detail.ticket.jira_key ?? "LOCAL" }}</span>
           <NBadge :tone="statusTone(detail.ticket.status)" :pulse="statusPulses(detail.ticket.status)">
             {{ detail.ticket.status }}
+          </NBadge>
+          <NBadge v-if="detail.ticket.awaiting_input" tone="accent" pulse>
+            agent awaiting your reply
           </NBadge>
           <NBadge v-if="jira?.status" tone="muted">{{ jira.status }}</NBadge>
           <NBadge v-if="jira?.issue_type">{{ jira.issue_type }}</NBadge>
@@ -659,13 +725,126 @@ onUnmounted(() => window.clearInterval(pollTimer));
           </div>
         </div>
 
-        <!-- PLAN -> GATE -> DISPATCH -->
-        <div class="section plan" v-if="detail.ticket.actionable">
-          <div class="label">Plan</div>
+        <!-- AGENT — the primary flow: give context, launch one agent, talk to it -->
+        <div class="section agent" v-if="detail.ticket.actionable">
+          <div class="label">Agent</div>
+          <label class="field">
+            <span>Your context / instructions</span>
+            <textarea
+              v-model="instructions"
+              rows="4"
+              class="input textarea"
+              placeholder="What you know that the ticket doesn't say: constraints, where to start, what to avoid…"
+            />
+          </label>
+          <div class="ship-row">
+            <NButton size="sm" :disabled="savingInstructions" @click="saveInstructions">
+              {{ savingInstructions ? "Saving…" : "Save context" }}
+            </NButton>
+            <span v-if="instructionsSaved" class="note">saved</span>
+          </div>
+
+          <!-- the conversation with the agent -->
+          <template v-if="convoSubtask">
+            <div class="convo">
+              <div
+                v-for="(m, i) in conversation?.messages ?? []"
+                :key="i"
+                class="msg"
+                :class="m.role"
+              >
+                <span class="who">{{ m.role === "user" ? "you" : "agent" }}</span>
+                <pre class="bubble">{{ m.text }}</pre>
+              </div>
+              <p v-if="!(conversation?.messages ?? []).length" class="muted small">
+                Agent is working — its reply lands here.
+              </p>
+            </div>
+            <div class="ship-row">
+              <NBadge
+                :tone="subtaskTone(convoSubtask.status)"
+                :pulse="subtaskPulses(convoSubtask.status)"
+              >
+                {{ subtaskLabel(convoSubtask.status) }}
+              </NBadge>
+              <span v-if="convoSubtask.error" class="err small">{{ convoSubtask.error }}</span>
+            </div>
+            <template v-if="canReply">
+              <textarea
+                v-model="replyText"
+                rows="3"
+                class="input textarea"
+                placeholder="Reply to the agent — it resumes with full context…"
+              />
+              <div class="ship-row">
+                <NButton
+                  variant="primary"
+                  size="sm"
+                  :disabled="replying || !replyText"
+                  @click="sendReply"
+                >
+                  {{ replying ? "Sending…" : "Send reply" }}
+                </NButton>
+              </div>
+            </template>
+          </template>
+
+          <!-- launch -->
+          <label class="field">
+            <span>Branch</span>
+            <input v-model="branchName" class="input" />
+          </label>
+          <label class="check">
+            <input type="checkbox" v-model="confirmDocker" />
+            Confirm this repo's compose project is the active OrbStack project
+          </label>
+          <div class="dispatch-row">
+            <select v-model="backend" class="input backend-select" title="Where the agent runs">
+              <option
+                v-for="b in backends"
+                :key="b.name"
+                :value="b.name"
+                :disabled="!b.available"
+              >
+                {{ b.label }}{{ b.available ? "" : " — unavailable" }}
+              </option>
+              <option v-if="!backends.length" value="claude">Claude Code</option>
+            </select>
+            <NButton
+              variant="primary"
+              :disabled="processing || !branchName || noBackendAvailable"
+              @click="process"
+            >
+              {{
+                processing
+                  ? "Launching…"
+                  : convoSubtask
+                    ? "Launch fresh session"
+                    : "Launch agent"
+              }}
+            </NButton>
+          </div>
+          <p v-if="backendHint" class="muted small">{{ backendHint }}</p>
+          <p v-if="noBackendAvailable" class="muted small">
+            No agent backend available on this machine — log in to Claude Code
+            (`claude`) or Cursor (`cursor-agent login`), or start the local proxy.
+          </p>
+          <p v-if="processError" class="err">{{ processError }}</p>
+        </div>
+        <div class="section" v-else>
+          <p class="muted">
+            This ticket's project has no registered repo, so it can't be dispatched.
+            Register a repo for <b>{{ detail.ticket.jira_project_key }}</b> and re-sync.
+          </p>
+        </div>
+
+        <!-- PLAN (optional mini-tickets, folded away) -->
+        <details class="section" v-if="detail.ticket.actionable">
+          <summary class="label">Plan mini-tickets (optional)</summary>
+          <div class="plan">
           <p class="muted small">
-            An agent proposes mini-tickets; you decide what actually runs. Each
-            approved one gets its own agent and worktree, in parallel — except
-            docker ones, which run one at a time.
+            An agent proposes mini-tickets; you decide what actually runs. They
+            share the ticket's worktree and run one at a time, in order.
           </p>
 
           <NButton size="sm" :disabled="planning" @click="proposePlan">
@@ -747,7 +926,8 @@ onUnmounted(() => window.clearInterval(pollTimer));
             <p v-if="backendHint" class="muted small">{{ backendHint }}</p>
           </template>
           <p v-if="planError" class="err">{{ planError }}</p>
-        </div>
+          </div>
+        </details>
 
         <!-- Agent subtasks (ours, not Jira's) — only what passed the gate -->
         <div class="section" v-if="dispatched.length">
@@ -758,8 +938,8 @@ onUnmounted(() => window.clearInterval(pollTimer));
           </p>
           <div v-for="s in dispatched" :key="s.id" class="subtask-block">
             <div class="subtask">
-              <NBadge :tone="subtaskTone(s.status)" :pulse="s.status === 'running'">
-                {{ s.status }}
+              <NBadge :tone="subtaskTone(s.status)" :pulse="subtaskPulses(s.status)">
+                {{ subtaskLabel(s.status) }}
               </NBadge>
               <span>{{ s.title }}</span>
               <NBadge v-if="s.needs_docker">docker</NBadge>
@@ -770,54 +950,6 @@ onUnmounted(() => window.clearInterval(pollTimer));
               <pre class="well small">{{ s.error ?? s.result }}</pre>
             </details>
           </div>
-        </div>
-
-        <!-- PROCESS (no-plan fallback: one lead agent at the whole ticket) -->
-        <div class="section process" v-if="!detail.subtasks.length">
-          <div class="label">Set agents off (no plan)</div>
-          <p class="muted small" v-if="detail.ticket.actionable">
-            Skips the plan: sends one lead agent at the whole ticket. Prefer
-            "Propose mini-tickets" above for reviewable, resumable work.
-          </p>
-          <template v-if="detail.ticket.actionable">
-            <label class="field">
-              <span>Branch</span>
-              <input v-model="branchName" class="input" />
-            </label>
-            <label class="check">
-              <input type="checkbox" v-model="confirmDocker" />
-              Confirm this repo's compose project is the active OrbStack project
-            </label>
-            <div class="dispatch-row">
-              <select v-model="backend" class="input backend-select" title="Where the agent runs">
-                <option
-                  v-for="b in backends"
-                  :key="b.name"
-                  :value="b.name"
-                  :disabled="!b.available"
-                >
-                  {{ b.label }}{{ b.available ? "" : " — unavailable" }}
-                </option>
-                <option v-if="!backends.length" value="claude">Claude Code</option>
-              </select>
-              <NButton
-                variant="primary"
-                :disabled="processing || !branchName || noBackendAvailable"
-                @click="process"
-              >
-                {{ processing ? "Dispatching…" : "Process ticket" }}
-              </NButton>
-            </div>
-            <p v-if="noBackendAvailable" class="muted small">
-              No agent backend available on this machine — log in to Claude Code
-              (`claude`) or Cursor (`cursor-agent login`), or start the local proxy.
-            </p>
-            <p v-if="processError" class="err">{{ processError }}</p>
-          </template>
-          <p v-else class="muted">
-            This ticket's project has no registered repo, so it can't be dispatched.
-            Register a repo for <b>{{ detail.ticket.jira_project_key }}</b> and re-sync.
-          </p>
         </div>
 
         <!-- REVIEW & SHIP (post-agent) -->
@@ -1361,6 +1493,58 @@ onUnmounted(() => window.clearInterval(pollTimer));
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.agent {
+  gap: var(--sp-3);
+}
+.agent .field,
+.agent .textarea {
+  width: 100%;
+}
+.convo {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: 45vh;
+  overflow: auto;
+  padding: var(--sp-2) 0;
+}
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 92%;
+}
+.msg.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.msg .who {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.msg .bubble {
+  margin: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-in);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.msg.user .bubble {
+  box-shadow: var(--shadow-out);
+}
+details.section > summary.label {
+  cursor: pointer;
+  list-style: revert;
 }
 .report summary {
   cursor: pointer;

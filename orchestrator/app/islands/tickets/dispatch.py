@@ -152,17 +152,59 @@ async def ensure_ticket_worktree(repo_dir: str, branch: str, base_branch: str) -
     return str(wt_path)
 
 
+# The conversation protocol markers (see services/policy.py). WORK_COMPLETE is
+# the only way a run reaches `done` — everything else parks as awaiting_input,
+# so the UI never shows "done" while the agent is actually waiting on the user.
+COMPLETE_MARKER = "WORK_COMPLETE"
+AWAITING_MARKER = "AWAITING_REPLY"
+
+
+def resolve_outcome(result: str | None) -> tuple[SubtaskStatus, str | None]:
+    """Map the agent's closing report onto a status, stripping the marker."""
+    if result is None:
+        return SubtaskStatus.AWAITING_INPUT, result
+    tail = result.strip()
+    if tail.endswith(COMPLETE_MARKER):
+        return SubtaskStatus.DONE, tail[: -len(COMPLETE_MARKER)].rstrip()
+    if tail.endswith(AWAITING_MARKER):
+        return SubtaskStatus.AWAITING_INPUT, tail[: -len(AWAITING_MARKER)].rstrip()
+    return SubtaskStatus.AWAITING_INPUT, result
+
+
+async def _finish_subtask(
+    pool: asyncpg.Pool,
+    subtask_id: UUID,
+    ticket_id: UUID,
+    *,
+    backend: str,
+    result: str | None,
+    session_id: str | None,
+) -> None:
+    status, report = resolve_outcome(result)
+    async with pool.acquire() as conn:
+        if session_id:
+            await repository.set_subtask_session(conn, subtask_id, session_id)
+        await repository.set_subtask_status(
+            conn, subtask_id, status, backend=backend, result=report
+        )
+        if status == SubtaskStatus.DONE:
+            await repository.maybe_advance_ticket_to_review(conn, ticket_id)
+
+
 async def run_subtask(
     pool: asyncpg.Pool,
     settings: Settings,
     subtask_id: UUID,
     backend: str = "claude",
+    *,
+    lead: bool = False,
 ) -> None:
     """Run a single already-created subtask through the chosen backend inside
     the ticket's worktree, streaming events to the DB and recording the
-    completing backend and its final report. Handles the local-proxy fallback
-    via AgentDispatcher. Marks the subtask done/failed and advances the ticket
-    to review when appropriate."""
+    completing backend, its final report and its session id. A lead subtask is
+    briefed with the whole ticket; a mini-ticket gets its own title/description
+    with the ticket as context. The run ends done (WORK_COMPLETE), failed, or
+    awaiting_input — the user's reply resumes it via resume_subtask."""
     sink = DbEventSink(pool)
     dispatcher = AgentDispatcher(settings, sink)
 
@@ -186,12 +228,14 @@ async def run_subtask(
         )
         async with pool.acquire() as conn:
             await repository.set_subtask_worktree(conn, subtask_id, cwd)
-        completed_backend, result = await dispatcher.dispatch(
+        completed_backend, result, session_id = await dispatcher.dispatch(
             subtask_id=subtask_id,
             branch_name=branch,
             ticket_title=ticket.title,
             ticket_description=ticket.description,
             processing_instructions=ticket.processing_instructions,
+            subtask_title=None if lead else subtask.title,
+            subtask_description=None if lead else subtask.description,
             backend=backend,
             cwd=cwd,
         )
@@ -202,15 +246,74 @@ async def run_subtask(
             )
         raise
 
+    await _finish_subtask(
+        pool,
+        subtask_id,
+        subtask.ticket_id,
+        backend=completed_backend,
+        result=result,
+        session_id=session_id,
+    )
+
+
+async def resume_subtask(
+    pool: asyncpg.Pool,
+    settings: Settings,
+    subtask_id: UUID,
+    message: str,
+) -> None:
+    """The user's reply: continue the subtask's CLI session in its worktree.
+    The reply is recorded in the conversation (agent_events) and the run ends
+    through the same marker protocol as the first turn."""
+    sink = DbEventSink(pool)
+    dispatcher = AgentDispatcher(settings, sink)
+
     async with pool.acquire() as conn:
-        await repository.set_subtask_status(
-            conn,
-            subtask_id,
-            SubtaskStatus.DONE,
-            backend=completed_backend,
-            result=result,
+        subtask = await repository.get_subtask(conn, subtask_id)
+        if subtask is None:
+            raise DispatchError("subtask not found")
+        if not subtask.sdk_session_id or not subtask.worktree_path:
+            raise DispatchError("subtask has no resumable agent session")
+        ticket = await repository.get_ticket(conn, subtask.ticket_id)
+        if ticket is None:
+            raise DispatchError("subtask has no ticket")
+
+    await sink.record_event(subtask_id, "message", {"role": "user", "text": message})
+    async with pool.acquire() as conn:
+        await repository.set_subtask_status(conn, subtask_id, SubtaskStatus.RUNNING)
+        # Replying to a reviewed ticket sends it back to the agent.
+        if ticket.status == TicketStatus.REVIEW:
+            await repository.set_ticket_status(
+                conn, subtask.ticket_id, TicketStatus.IN_PROGRESS
+            )
+
+    try:
+        completed_backend, result, session_id = await dispatcher.dispatch(
+            subtask_id=subtask_id,
+            branch_name=ticket.branch_name or ticket.jira_key,
+            ticket_title=ticket.title,
+            ticket_description=ticket.description,
+            processing_instructions=ticket.processing_instructions,
+            backend=subtask.backend or "claude",
+            cwd=subtask.worktree_path,
+            resume_session_id=subtask.sdk_session_id,
+            prompt_override=message,
         )
-        await repository.maybe_advance_ticket_to_review(conn, subtask.ticket_id)
+    except Exception as exc:  # noqa: BLE001 - persist the failure, don't crash the worker
+        async with pool.acquire() as conn:
+            await repository.set_subtask_status(
+                conn, subtask_id, SubtaskStatus.FAILED, error=str(exc)
+            )
+        raise
+
+    await _finish_subtask(
+        pool,
+        subtask_id,
+        subtask.ticket_id,
+        backend=completed_backend,
+        result=result,
+        session_id=session_id,
+    )
 
 
 async def run_ticket_plan(
@@ -252,19 +355,18 @@ async def run_ticket_agent(
     ticket_id: UUID,
     backend: str = "claude",
 ) -> None:
-    """Kick off the agent for a ticket (called in the background by /process).
-
-    Creates the lead coordination subtask and runs it on the chosen backend.
-    The lead run is a single coordination subtask, and its agent_events feed
-    the live progress view. Failures (e.g. the backend CLI missing) are
-    recorded on the subtask, not raised to the caller — this runs detached
-    from the request."""
+    """Kick off the lead agent for a ticket (called in the background by
+    /process). One agent owns the whole ticket, spawns its own subagents if it
+    wants, and converses with the user via the awaiting_input loop. Each launch
+    is a fresh conversation (a new lead subtask + CLI session); replies go
+    through resume_subtask instead."""
     async with pool.acquire() as conn:
         lead = await repository.create_subtask(
             conn,
             ticket_id=ticket_id,
             title="Agent run",
-            description="Lead agent: plan and coordinate subtasks.",
+            description="Lead agent: owns the whole ticket.",
             order_index=0,
+            backend=backend,
         )
-    await run_subtask(pool, settings, lead.id, backend)
+    await run_subtask(pool, settings, lead.id, backend, lead=True)

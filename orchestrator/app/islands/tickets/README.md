@@ -32,7 +32,19 @@ Registered `repos` live in `app/core/repos.py` (shared).
 (self-authored via `POST /tickets/local`; no `jira_key`, never refreshed against
 Jira). See `migrations/005_local_tickets.sql`.
 
-## Plan -> gate -> dispatch
+## The conversation loop (primary flow)
+
+The user edits the ticket's context (`PATCH /tickets/{id}/instructions`) and
+launches ONE lead agent (`POST /tickets/{id}/process`) that owns the whole
+ticket and may spawn its own subagents. The agent must end every turn with a
+marker (services/policy.py): `WORK_COMPLETE` -> subtask `done` (the only path
+to done), anything else -> `awaiting_input` — the UI flashes "needs you", the
+user replies (`POST /tickets/{id}/agent/reply`), and the CLI session resumes
+(`subtasks.sdk_session_id`) in the same worktree. The thread is served by
+`GET /tickets/{id}/conversation` (built from agent_events). Each launch is a
+fresh conversation subtask; a reply can reopen a `done` one.
+
+## Plan -> gate -> dispatch (optional)
 
 `POST /tickets/{id}/plan` asks a planner (services/planner.py) to decompose the
 ticket into mini-tickets, stored as subtasks in `proposed` — an inert status the

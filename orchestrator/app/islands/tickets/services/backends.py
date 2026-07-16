@@ -97,6 +97,9 @@ class CliBackend:
     argv_head: list[str]
     env_overrides: dict[str, str]
     drop_env: tuple[str, ...] = ()
+    # Flag that continues a previous session (the conversation loop). Both the
+    # Claude and Cursor CLIs use --resume; None = backend can't resume.
+    resume_flag: str | None = "--resume"
 
     def _env(self) -> dict[str, str]:
         env = {k: v for k, v in os.environ.items() if k not in self.drop_env}
@@ -104,12 +107,24 @@ class CliBackend:
         return env
 
     async def run(
-        self, prompt: str, *, cwd: str, timeout_seconds: int
+        self,
+        prompt: str,
+        *,
+        cwd: str,
+        timeout_seconds: int,
+        resume_session_id: str | None = None,
     ) -> AsyncIterator[tuple[str, dict]]:
         """Yield classified events from one agent run. Raises BackendFailed if
         the process dies without ever emitting a result line."""
+        argv = list(self.argv_head)
+        if resume_session_id:
+            if not self.resume_flag:
+                raise BackendUnavailable(
+                    f"backend '{self.name}' cannot resume a session"
+                )
+            argv += [self.resume_flag, resume_session_id]
         proc = await asyncio.create_subprocess_exec(
-            *self.argv_head,
+            *argv,
             prompt,
             cwd=cwd,
             env=self._env(),

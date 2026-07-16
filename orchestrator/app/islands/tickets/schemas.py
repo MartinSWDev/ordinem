@@ -30,6 +30,9 @@ class TicketRow(BaseModel):
     processing_instructions: str | None = None
     branch_name: str | None = None
     status: TicketStatus
+    # True while any subtask sits in awaiting_input — the agent asked the user
+    # something and is parked until they reply. Drives the flashing badge.
+    awaiting_input: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -165,6 +168,36 @@ class ProcessTicketRequest(BaseModel):
         "claude",
         description="Where the agent runs: claude | cursor | local (see GET /tickets/backends).",
     )
+
+
+class AgentReplyRequest(BaseModel):
+    """POST /tickets/:id/agent/reply — answer the waiting agent; resumes its
+    CLI session in the same worktree with full context."""
+
+    message: str = Field(..., min_length=1)
+    subtask_id: UUID | None = Field(
+        None, description="Defaults to the ticket's live conversation subtask."
+    )
+
+
+class UpdateInstructionsRequest(BaseModel):
+    """PATCH /tickets/:id/instructions — the user's context for the agent."""
+
+    processing_instructions: str | None = None
+
+
+class ConversationMessage(BaseModel):
+    role: str  # "user" | "agent"
+    text: str
+    at: datetime
+
+
+class ConversationView(BaseModel):
+    """GET /tickets/:id/conversation — the agent <-> user thread for the
+    ticket's live conversation subtask."""
+
+    subtask: SubtaskRow | None = None
+    messages: list[ConversationMessage] = Field(default_factory=list)
 
 
 class CommitPlanRequestBody(BaseModel):

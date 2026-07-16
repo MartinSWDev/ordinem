@@ -3,6 +3,7 @@ import type { Island } from "../../core/types";
 import type {
   AgentBackend,
   CheckRun,
+  Conversation,
   CommitPlan,
   MyTicketsSyncResult,
   NewLocalTicket,
@@ -36,6 +37,16 @@ export function useTickets(island: Island) {
     /** refresh=false skips the Jira re-fetch — use it when polling. */
     getTicket: (id: string, refresh = true) =>
       request<TicketDetail>("GET", `/${id}${refresh ? "" : "?refresh=false"}`),
+    /** Your context for the agent — editable any time; next launch uses it. */
+    updateInstructions: (id: string, instructions: string | null) =>
+      request<Ticket>("PATCH", `/${id}/instructions`, {
+        processing_instructions: instructions,
+      }),
+    /** The agent <-> you thread for the ticket's live conversation. */
+    getConversation: (id: string) => request<Conversation>("GET", `/${id}/conversation`),
+    /** Answer the waiting agent; resumes its session with full context. */
+    replyToAgent: (id: string, message: string) =>
+      request<TicketDetail>("POST", `/${id}/agent/reply`, { message }),
     processTicket: (id: string, branchName: string, confirmDocker: boolean, backend: string) =>
       request<TicketDetail>("POST", `/${id}/process`, {
         branch_name: branchName,

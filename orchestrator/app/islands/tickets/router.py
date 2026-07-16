@@ -18,6 +18,8 @@ from app.core.deps import get_config, get_pool
 from app.islands.tickets.dispatch import (
     DispatchError,
     prepare_dispatch,
+    resolve_outcome,
+    resume_subtask,
     run_ticket_agent,
     run_ticket_plan,
 )
@@ -31,7 +33,7 @@ from app.islands.tickets.services.backends import (
 from app.islands.tickets.services.checks import run_pre_push_checks
 from app.islands.tickets.services.jira import JiraClient, JiraError, JiraNotConfigured
 from app.islands.tickets.services.pr import build_template_fields
-from app.islands.tickets.state_machine import TicketStatus
+from app.islands.tickets.state_machine import SubtaskStatus, TicketStatus
 
 logger = logging.getLogger("ordinem.orchestrator")
 
@@ -398,6 +400,96 @@ async def process_ticket(
         raise HTTPException(status_code=409, detail=str(exc))
 
     _launch_agent(pool, settings, ticket_id, body.backend)
+
+    async with pool.acquire() as conn:
+        detail = await repository.get_ticket_detail(conn, ticket_id)
+    assert detail is not None
+    return detail
+
+
+@router.patch("/{ticket_id}/instructions", response_model=schemas.TicketRow)
+async def update_instructions(
+    ticket_id: UUID,
+    body: schemas.UpdateInstructionsRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> schemas.TicketRow:
+    """Save the user's context/instructions for the agent. Editable any time;
+    the next launch (not a resume) picks it up."""
+    async with pool.acquire() as conn:
+        try:
+            return await repository.set_ticket_instructions(
+                conn, ticket_id, body.processing_instructions
+            )
+        except LookupError:
+            raise HTTPException(status_code=404, detail="ticket not found")
+
+
+@router.get("/{ticket_id}/conversation", response_model=schemas.ConversationView)
+async def get_conversation(
+    ticket_id: UUID,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> schemas.ConversationView:
+    """The agent <-> user thread for the ticket's live conversation subtask:
+    each agent turn's closing report plus the user's replies, in order."""
+    async with pool.acquire() as conn:
+        subtask = await repository.get_conversation_subtask(conn, ticket_id)
+        if subtask is None:
+            return schemas.ConversationView()
+        events = await repository.get_events_for_subtask(conn, subtask.id)
+
+    messages: list[schemas.ConversationMessage] = []
+    for ev in events:
+        if ev.event_type == "message" and ev.payload.get("role") == "user":
+            messages.append(
+                schemas.ConversationMessage(
+                    role="user", text=str(ev.payload.get("text", "")), at=ev.created_at
+                )
+            )
+        elif ev.event_type in ("stop", "stop_failure"):
+            raw = (ev.payload.get("stream") or {}).get("result")
+            if raw:
+                _, text = resolve_outcome(str(raw))
+                messages.append(
+                    schemas.ConversationMessage(
+                        role="agent", text=text or "", at=ev.created_at
+                    )
+                )
+    return schemas.ConversationView(subtask=subtask, messages=messages)
+
+
+@router.post("/{ticket_id}/agent/reply", response_model=schemas.TicketDetail, status_code=202)
+async def reply_to_agent(
+    ticket_id: UUID,
+    body: schemas.AgentReplyRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+    settings: Settings = Depends(get_config),
+) -> schemas.TicketDetail:
+    """Answer the waiting agent: resumes its CLI session in the same worktree.
+    Returns immediately; the turn streams into agent_events and the subtask
+    ends done / awaiting_input again via the marker protocol."""
+    async with pool.acquire() as conn:
+        if body.subtask_id is not None:
+            target = await repository.get_subtask(conn, body.subtask_id)
+        else:
+            target = await repository.get_conversation_subtask(conn, ticket_id)
+    if target is None or target.ticket_id != ticket_id:
+        raise HTTPException(status_code=404, detail="no conversation for ticket")
+    if target.status not in (SubtaskStatus.AWAITING_INPUT, SubtaskStatus.DONE):
+        raise HTTPException(
+            status_code=409,
+            detail=f"conversation is '{target.status}' — reply when it's awaiting_input or done",
+        )
+    if not target.sdk_session_id:
+        raise HTTPException(
+            status_code=409,
+            detail="conversation has no resumable session (backend may not support resume)",
+        )
+
+    _launch(
+        resume_subtask(pool, settings, target.id, body.message),
+        ticket_id,
+        "agent reply",
+    )
 
     async with pool.acquire() as conn:
         detail = await repository.get_ticket_detail(conn, ticket_id)

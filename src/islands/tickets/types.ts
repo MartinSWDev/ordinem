@@ -11,11 +11,13 @@ export type TicketStatus =
   | "done"
   | "abandoned";
 
-/** `proposed` is a planner suggestion: inert until a human approves it. */
+/** `proposed` is a planner suggestion: inert until a human approves it.
+ *  `awaiting_input` means the agent asked you something and is parked. */
 export type SubtaskStatus =
   | "proposed"
   | "pending"
   | "running"
+  | "awaiting_input"
   | "done"
   | "failed"
   | "skipped";
@@ -86,9 +88,23 @@ export interface Ticket {
   processing_instructions: string | null;
   branch_name: string | null;
   status: TicketStatus;
+  /** An agent asked you something and is waiting — drives the flashing badge. */
+  awaiting_input: boolean;
   actionable: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** One turn in the agent <-> you conversation. */
+export interface ConversationMessage {
+  role: "user" | "agent";
+  text: string;
+  at: string;
+}
+
+export interface Conversation {
+  subtask: Subtask | null;
+  messages: ConversationMessage[];
 }
 
 export interface Subtask {
@@ -101,6 +117,8 @@ export interface Subtask {
   needs_docker: boolean;
   backend: string | null;
   worktree_path: string | null;
+  /** CLI session id — present once the agent has run; enables replies. */
+  sdk_session_id: string | null;
   error: string | null;
   /** The agent's closing report — a finished run may have declined to write
    *  code; this is what you review to find out. */

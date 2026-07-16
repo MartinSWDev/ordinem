@@ -50,9 +50,10 @@ async def test_run_ticket_agent_creates_lead_subtask_and_runs_it(monkeypatch):
         created.update(ticket_id=ticket_id, title=title, order_index=order_index)
         return types.SimpleNamespace(id=lead_id)
 
-    async def fake_run_subtask(pool, settings, subtask_id, backend="claude"):
+    async def fake_run_subtask(pool, settings, subtask_id, backend="claude", lead=False):
         ran["subtask_id"] = subtask_id
         ran["backend"] = backend
+        ran["lead"] = lead
 
     monkeypatch.setattr(dispatch_mod.repository, "create_subtask", fake_create_subtask)
     monkeypatch.setattr(dispatch_mod, "run_subtask", fake_run_subtask)
@@ -63,6 +64,7 @@ async def test_run_ticket_agent_creates_lead_subtask_and_runs_it(monkeypatch):
     assert created["order_index"] == 0
     assert ran["subtask_id"] == lead_id
     assert ran["backend"] == "cursor", "the chosen backend must reach the run"
+    assert ran["lead"] is True, "a /process run is briefed with the whole ticket"
 
 
 async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
@@ -72,9 +74,11 @@ async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
     ticket_id = uuid4()
     statuses: list = []
 
-    async def fake_set_status(conn, sid, status, *, backend=None, error=None):
+    async def fake_set_status(conn, sid, status, *, backend=None, error=None, result=None):
         statuses.append((status, error))
-        return types.SimpleNamespace(id=sid, ticket_id=ticket_id)
+        return types.SimpleNamespace(
+            id=sid, ticket_id=ticket_id, title="mini", description="do it"
+        )
 
     async def fake_get_ticket(conn, tid):
         return types.SimpleNamespace(
@@ -166,3 +170,27 @@ def test_review_can_go_back_to_in_progress():
     from app.islands.tickets.state_machine import TicketStatus, can_transition_ticket
 
     assert can_transition_ticket(TicketStatus.REVIEW, TicketStatus.IN_PROGRESS)
+
+
+# --- the conversation marker protocol -------------------------------------------
+
+
+def test_work_complete_marker_means_done():
+    status, report = dispatch_mod.resolve_outcome("All tests pass.\n\nWORK_COMPLETE")
+    assert status == SubtaskStatus.DONE
+    assert report == "All tests pass."
+
+
+def test_awaiting_marker_parks_for_the_user():
+    status, report = dispatch_mod.resolve_outcome("Two questions:\n1) ...\nAWAITING_REPLY")
+    assert status == SubtaskStatus.AWAITING_INPUT
+    assert report == "Two questions:\n1) ..."
+
+
+def test_missing_marker_never_shows_done():
+    """The original bug: an agent that stopped with questions was shown as
+    'done'. No marker -> park as awaiting_input, never done."""
+    status, report = dispatch_mod.resolve_outcome("I stopped before writing code. ...")
+    assert status == SubtaskStatus.AWAITING_INPUT
+    assert report == "I stopped before writing code. ..."
+    assert dispatch_mod.resolve_outcome(None)[0] == SubtaskStatus.AWAITING_INPUT

@@ -84,7 +84,11 @@ def test_checks_failed_never_auto_loops_without_intervention():
         (S.PENDING, S.SKIPPED),
         (S.RUNNING, S.DONE),
         (S.RUNNING, S.FAILED),
-        (S.FAILED, S.PENDING),  # requeue (possibly qwen)
+        (S.RUNNING, S.AWAITING_INPUT),  # the agent asked the user something
+        (S.AWAITING_INPUT, S.RUNNING),  # the user replied
+        (S.AWAITING_INPUT, S.SKIPPED),  # conversation abandoned
+        (S.DONE, S.RUNNING),  # a reply reopens a finished conversation
+        (S.FAILED, S.PENDING),  # requeue (possibly another backend)
     ],
 )
 def test_legal_subtask_transitions(current, target):
@@ -96,7 +100,7 @@ def test_legal_subtask_transitions(current, target):
     "current,target",
     [
         (S.PENDING, S.DONE),
-        (S.DONE, S.RUNNING),
+        (S.PENDING, S.AWAITING_INPUT),
         (S.SKIPPED, S.RUNNING),
         (S.RUNNING, S.PENDING),
     ],

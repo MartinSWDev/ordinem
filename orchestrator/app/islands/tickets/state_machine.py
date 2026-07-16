@@ -28,6 +28,8 @@ class SubtaskStatus(StrEnum):
     PROPOSED = "proposed"
     PENDING = "pending"
     RUNNING = "running"
+    # the agent ended its turn with a question — the ball is in the user's court
+    AWAITING_INPUT = "awaiting_input"
     DONE = "done"
     FAILED = "failed"
     SKIPPED = "skipped"
@@ -62,10 +64,17 @@ _SUBTASK_TRANSITIONS: dict[SubtaskStatus, set[SubtaskStatus]] = {
     # subtask can never go straight to running.
     SubtaskStatus.PROPOSED: {SubtaskStatus.PENDING, SubtaskStatus.SKIPPED},
     SubtaskStatus.PENDING: {SubtaskStatus.RUNNING, SubtaskStatus.SKIPPED},
-    SubtaskStatus.RUNNING: {SubtaskStatus.DONE, SubtaskStatus.FAILED},
-    # requeued after a failure, possibly with backend switched to qwen
+    SubtaskStatus.RUNNING: {
+        SubtaskStatus.DONE,
+        SubtaskStatus.FAILED,
+        SubtaskStatus.AWAITING_INPUT,
+    },
+    # the user replies (back to running) or abandons the conversation
+    SubtaskStatus.AWAITING_INPUT: {SubtaskStatus.RUNNING, SubtaskStatus.SKIPPED},
+    # requeued after a failure, possibly on a different backend
     SubtaskStatus.FAILED: {SubtaskStatus.PENDING},
-    SubtaskStatus.DONE: set(),
+    # a user reply can reopen a finished conversation ("actually, also…")
+    SubtaskStatus.DONE: {SubtaskStatus.RUNNING},
     SubtaskStatus.SKIPPED: set(),
 }
 

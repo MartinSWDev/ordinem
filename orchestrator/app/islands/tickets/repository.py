@@ -136,15 +136,32 @@ async def list_tickets(
         clauses.append(f"jira_project_key = ${len(args)}")
     where = f"where {' and '.join(clauses)}" if clauses else ""
     # No join on repos: tickets in unregistered projects (repo_id null) must
-    # still appear — they're visible-but-unactionable.
+    # still appear — they're visible-but-unactionable. awaiting_input bubbles
+    # up so the list can flash tickets whose agent is waiting on the user.
     rows = await conn.fetch(
-        f"select * from tickets {where} order by updated_at desc", *args
+        f"""
+        select t.*, exists(
+          select 1 from subtasks s
+          where s.ticket_id = t.id and s.status = 'awaiting_input'
+        ) as awaiting_input
+        from tickets t {where} order by updated_at desc
+        """,
+        *args,
     )
     return [schemas.TicketRow(**dict(r)) for r in rows]
 
 
 async def get_ticket(conn: asyncpg.Connection, ticket_id: UUID) -> schemas.TicketRow | None:
-    row = await conn.fetchrow("select * from tickets where id = $1", ticket_id)
+    row = await conn.fetchrow(
+        """
+        select t.*, exists(
+          select 1 from subtasks s
+          where s.ticket_id = t.id and s.status = 'awaiting_input'
+        ) as awaiting_input
+        from tickets t where t.id = $1
+        """,
+        ticket_id,
+    )
     return schemas.TicketRow(**dict(row)) if row else None
 
 
@@ -170,6 +187,22 @@ async def set_ticket_status(
         ticket_id,
         str(target),
     )
+    return schemas.TicketRow(**dict(row))
+
+
+async def set_ticket_instructions(
+    conn: asyncpg.Connection, ticket_id: UUID, processing_instructions: str | None
+) -> schemas.TicketRow:
+    """The user's context/instructions for the agent — editable any time; the
+    next launch picks it up."""
+    row = await conn.fetchrow(
+        "update tickets set processing_instructions = $2, updated_at = now() "
+        "where id = $1 returning *",
+        ticket_id,
+        processing_instructions,
+    )
+    if row is None:
+        raise LookupError("ticket not found")
     return schemas.TicketRow(**dict(row))
 
 
@@ -347,6 +380,49 @@ async def set_subtask_worktree(
         subtask_id,
         worktree_path,
     )
+
+
+async def get_subtask(
+    conn: asyncpg.Connection, subtask_id: UUID
+) -> schemas.SubtaskRow | None:
+    row = await conn.fetchrow("select * from subtasks where id = $1", subtask_id)
+    return schemas.SubtaskRow(**dict(row)) if row else None
+
+
+async def set_subtask_session(
+    conn: asyncpg.Connection, subtask_id: UUID, session_id: str
+) -> None:
+    await conn.execute(
+        "update subtasks set sdk_session_id = $2 where id = $1",
+        subtask_id,
+        session_id,
+    )
+
+
+async def get_conversation_subtask(
+    conn: asyncpg.Connection, ticket_id: UUID
+) -> schemas.SubtaskRow | None:
+    """The ticket's live conversation: the most recent subtask that has (or is
+    getting) a CLI session — each launch starts a new one."""
+    row = await conn.fetchrow(
+        """
+        select * from subtasks
+        where ticket_id = $1 and (sdk_session_id is not null or status = 'running')
+        order by started_at desc nulls last, id desc limit 1
+        """,
+        ticket_id,
+    )
+    return schemas.SubtaskRow(**dict(row)) if row else None
+
+
+async def get_events_for_subtask(
+    conn: asyncpg.Connection, subtask_id: UUID
+) -> list[schemas.AgentEventRow]:
+    rows = await conn.fetch(
+        "select * from agent_events where subtask_id = $1 order by id",
+        subtask_id,
+    )
+    return [schemas.AgentEventRow(**dict(r)) for r in rows]
 
 
 async def maybe_advance_ticket_to_review(
