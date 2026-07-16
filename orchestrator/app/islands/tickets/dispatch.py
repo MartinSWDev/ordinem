@@ -89,8 +89,9 @@ async def prepare_dispatch(
                 await repository.set_ticket_status(
                     conn, ticket_id, TicketStatus.IN_PROGRESS
                 )
-            elif ticket.status == TicketStatus.CHECKS_FAILED:
-                # re-dispatch after a failed check (manual intervention path)
+            elif ticket.status in (TicketStatus.CHECKS_FAILED, TicketStatus.REVIEW):
+                # re-dispatch: after a failed check, or with a newly approved
+                # plan from review (both manual intervention paths)
                 await repository.set_ticket_status(
                     conn, ticket_id, TicketStatus.IN_PROGRESS
                 )
@@ -101,8 +102,8 @@ async def prepare_dispatch(
 
 
 def _repo_checkout_dir(repo_row) -> str:
-    """The directory the agent CLI runs in: the repo's registered checkout,
-    falling back to the compose file's directory."""
+    """The repo's registered checkout, falling back to the compose file's
+    directory."""
     if repo_row["local_path"]:
         return repo_row["local_path"]
     if repo_row["docker_compose_path"]:
@@ -113,16 +114,55 @@ def _repo_checkout_dir(repo_row) -> str:
     )
 
 
+async def _git(repo_dir: str, *args: str) -> tuple[int, str]:
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        "-C",
+        repo_dir,
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    out, _ = await proc.communicate()
+    return proc.returncode or 0, out.decode("utf-8", errors="replace")
+
+
+async def ensure_ticket_worktree(repo_dir: str, branch: str, base_branch: str) -> str:
+    """Create (or reuse) the ticket's git worktree on its branch, next to the
+    checkout: <repo>-worktrees/<branch>. Every agent for the ticket runs in
+    this directory, so the branch in the prompt is the branch under its feet
+    and the user's own checkout is never touched."""
+    repo = Path(repo_dir)
+    wt_path = repo.parent / f"{repo.name}-worktrees" / branch.replace("/", "-")
+    if (wt_path / ".git").exists():
+        return str(wt_path)
+    wt_path.parent.mkdir(parents=True, exist_ok=True)
+
+    code, _ = await _git(repo_dir, "rev-parse", "--verify", "--quiet", branch)
+    if code == 0:
+        code, out = await _git(repo_dir, "worktree", "add", str(wt_path), branch)
+    else:
+        code, out = await _git(
+            repo_dir, "worktree", "add", "-b", branch, str(wt_path), base_branch
+        )
+    if code != 0:
+        raise DispatchError(
+            f"could not create worktree for branch '{branch}': {out.strip()[-500:]}"
+        )
+    return str(wt_path)
+
+
 async def run_subtask(
     pool: asyncpg.Pool,
     settings: Settings,
     subtask_id: UUID,
     backend: str = "claude",
 ) -> None:
-    """Run a single already-created subtask through the chosen backend,
-    streaming events to the DB and recording the completing backend. Handles
-    the local-proxy fallback via AgentDispatcher. Marks the subtask done/failed
-    and advances the ticket to review when appropriate."""
+    """Run a single already-created subtask through the chosen backend inside
+    the ticket's worktree, streaming events to the DB and recording the
+    completing backend and its final report. Handles the local-proxy fallback
+    via AgentDispatcher. Marks the subtask done/failed and advances the ticket
+    to review when appropriate."""
     sink = DbEventSink(pool)
     dispatcher = AgentDispatcher(settings, sink)
 
@@ -139,11 +179,16 @@ async def run_subtask(
         if repo_row is None:
             raise DispatchError("subtask's ticket has no repo")
 
+    branch = ticket.branch_name or ticket.jira_key
     try:
-        cwd = _repo_checkout_dir(repo_row)
-        completed_backend = await dispatcher.dispatch(
+        cwd = await ensure_ticket_worktree(
+            _repo_checkout_dir(repo_row), branch, repo_row["default_branch"]
+        )
+        async with pool.acquire() as conn:
+            await repository.set_subtask_worktree(conn, subtask_id, cwd)
+        completed_backend, result = await dispatcher.dispatch(
             subtask_id=subtask_id,
-            branch_name=ticket.branch_name or ticket.jira_key,
+            branch_name=branch,
             ticket_title=ticket.title,
             ticket_description=ticket.description,
             processing_instructions=ticket.processing_instructions,
@@ -159,7 +204,11 @@ async def run_subtask(
 
     async with pool.acquire() as conn:
         await repository.set_subtask_status(
-            conn, subtask_id, SubtaskStatus.DONE, backend=completed_backend
+            conn,
+            subtask_id,
+            SubtaskStatus.DONE,
+            backend=completed_backend,
+            result=result,
         )
         await repository.maybe_advance_ticket_to_review(conn, subtask.ticket_id)
 
@@ -172,36 +221,26 @@ async def run_ticket_plan(
 ) -> None:
     """Run every approved mini-ticket for a ticket (called detached by /dispatch).
 
-    Mini-tickets are independent by construction — the planner is told to keep
-    them file-disjoint and each gets its own agent session and worktree — so the
-    non-docker ones run concurrently. The docker ones run one at a time, and
-    never alongside each other, because there is a single active OrbStack
-    project on this Mac and two agents pointing at it would collide.
+    All mini-tickets share the ticket's single worktree and branch, so they run
+    strictly in sequence, in plan order — two agents editing and committing in
+    the same working tree would trip over each other's files and git index.
+    (Per-subtask worktrees + a merge step would restore parallelism; that's a
+    deliberate later step.) Sequencing also satisfies the docker constraint:
+    only one agent ever faces the single active OrbStack project.
 
     A failing mini-ticket must not take its siblings down: run_subtask already
-    records the failure on its own row, so failures are collected and swallowed
-    here. The ticket advances to review only once every subtask is done or
-    skipped, which a failure prevents by design — the user requeues it.
+    records the failure on its own row, so failures are swallowed here. The
+    ticket advances to review only once every subtask is done or skipped, which
+    a failure prevents by design — the user requeues it.
     """
     async with pool.acquire() as conn:
         subtasks = await repository.get_dispatchable_subtasks(conn, ticket_id)
 
-    parallel = [s for s in subtasks if not s.needs_docker]
-    serial = [s for s in subtasks if s.needs_docker]
-
-    async def _run(subtask_id: UUID) -> None:
+    for s in subtasks:
         try:
-            await run_subtask(pool, settings, subtask_id, backend)
+            await run_subtask(pool, settings, s.id, backend)
         except Exception:  # noqa: BLE001 - already recorded on the subtask row
             pass
-
-    # The docker chain is itself just one more concurrent participant: it runs
-    # its members in sequence while the parallel ones proceed alongside it.
-    async def _run_serial() -> None:
-        for s in serial:
-            await _run(s.id)
-
-    await asyncio.gather(*(_run(s.id) for s in parallel), _run_serial())
 
     async with pool.acquire() as conn:
         await repository.maybe_advance_ticket_to_review(conn, ticket_id)

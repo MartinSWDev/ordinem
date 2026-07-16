@@ -24,8 +24,12 @@ class _FakeConn:
         return False
 
     async def fetchrow(self, query, *args):
-        # The repo row run_subtask resolves the agent's cwd from.
-        return {"local_path": "/tmp/repo", "docker_compose_path": None}
+        # The repo row run_subtask resolves the agent's worktree from.
+        return {
+            "local_path": "/tmp/repo",
+            "docker_compose_path": None,
+            "default_branch": "main",
+        }
 
 
 class _FakePool:
@@ -85,8 +89,16 @@ async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
         async def dispatch(self, **kwargs):
             raise RuntimeError("'claude' not installed")
 
+    async def fake_worktree(repo_dir, branch, base_branch):
+        return "/tmp/wt"
+
+    async def fake_set_worktree(conn, sid, path):
+        return None
+
     monkeypatch.setattr(dispatch_mod.repository, "set_subtask_status", fake_set_status)
     monkeypatch.setattr(dispatch_mod.repository, "get_ticket", fake_get_ticket)
+    monkeypatch.setattr(dispatch_mod.repository, "set_subtask_worktree", fake_set_worktree)
+    monkeypatch.setattr(dispatch_mod, "ensure_ticket_worktree", fake_worktree)
     monkeypatch.setattr(dispatch_mod, "AgentDispatcher", FailingDispatcher)
 
     with pytest.raises(RuntimeError):
@@ -94,3 +106,63 @@ async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
 
     assert (SubtaskStatus.RUNNING, None) in statuses
     assert any(s == SubtaskStatus.FAILED and "not installed" in (e or "") for s, e in statuses)
+
+
+# --- worktrees ----------------------------------------------------------------
+
+
+async def _init_repo(path):
+    import asyncio
+
+    async def git(*args):
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", str(path), *args,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        )
+        out, _ = await proc.communicate()
+        assert proc.returncode == 0, out.decode()
+
+    path.mkdir()
+    await git("init", "-b", "main")
+    await git("config", "user.email", "t@t")
+    await git("config", "user.name", "t")
+    (path / "f.txt").write_text("hello")
+    await git("add", ".")
+    await git("commit", "-m", "init")
+    return git
+
+
+async def test_ensure_ticket_worktree_creates_branch_and_dir(tmp_path):
+    repo = tmp_path / "repo"
+    git = await _init_repo(repo)
+
+    wt = await dispatch_mod.ensure_ticket_worktree(str(repo), "feat/x", "main")
+
+    from pathlib import Path
+
+    assert Path(wt) == tmp_path / "repo-worktrees" / "feat-x"
+    assert (Path(wt) / "f.txt").exists(), "worktree carries the repo contents"
+    # the branch exists and is checked out there, not in the main checkout
+    import asyncio
+
+    proc = await asyncio.create_subprocess_exec(
+        "git", "-C", wt, "rev-parse", "--abbrev-ref", "HEAD",
+        stdout=asyncio.subprocess.PIPE,
+    )
+    out, _ = await proc.communicate()
+    assert out.decode().strip() == "feat/x"
+
+
+async def test_ensure_ticket_worktree_is_idempotent(tmp_path):
+    repo = tmp_path / "repo"
+    await _init_repo(repo)
+    first = await dispatch_mod.ensure_ticket_worktree(str(repo), "feat/x", "main")
+    second = await dispatch_mod.ensure_ticket_worktree(str(repo), "feat/x", "main")
+    assert first == second
+
+
+def test_review_can_go_back_to_in_progress():
+    """Re-dispatch from review: approving a fresh plan sends agents back in."""
+    from app.islands.tickets.state_machine import TicketStatus, can_transition_ticket
+
+    assert can_transition_ticket(TicketStatus.REVIEW, TicketStatus.IN_PROGRESS)

@@ -49,10 +49,11 @@ class Settings(BaseSettings):
     # orchestrator only needs to find the binaries.
     claude_cli: str = "claude"
     cursor_cli: str = "cursor-agent"
-    # --permission-mode for the Claude CLI runs. "acceptEdits" auto-approves
-    # file edits but not arbitrary commands; set "bypassPermissions" for fully
-    # unattended runs (the policy preamble still forbids `git push`).
-    agent_permission_mode: str = "acceptEdits"
+    # --permission-mode for the Claude CLI runs. Headless agents can't answer
+    # permission prompts, and they must run tests and commit inside their
+    # isolated worktree, so unattended is the default (the policy preamble
+    # still forbids `git push`). Set "acceptEdits" for edit-only runs.
+    agent_permission_mode: str = "bypassPermissions"
     # cursor-agent can't prompt in headless mode; --force lets it run commands
     # (tests, lint) instead of stalling. Set false to keep it edit-only.
     cursor_force: bool = True

@@ -57,11 +57,11 @@ class AgentDispatcher:
         acceptance_criteria: str | None = None,
         backend: str = "claude",
         cwd: str,
-    ) -> str:
+    ) -> tuple[str, str | None]:
         """Run one dispatch for a subtask and stream its events. Returns the
-        backend that completed it. On a StopFailure that looks like a
-        rate-limit/auth issue, re-dispatches once on 'local' if a proxy is
-        configured."""
+        backend that completed it and the agent's final report text. On a
+        StopFailure that looks like a rate-limit/auth issue, re-dispatches once
+        on 'local' if a proxy is configured."""
         runner = build_backend(self._settings, backend)
         prompt = build_agent_prompt(
             branch_name=branch_name,
@@ -72,11 +72,15 @@ class AgentDispatcher:
         )
 
         hit_failure = False
+        result: str | None = None
         async for event_type, payload in runner.run(
             prompt, cwd=cwd, timeout_seconds=self._settings.agent_timeout_seconds
         ):
             payload["backend"] = backend
             await self._sink.record_event(subtask_id, event_type, payload)
+            if event_type in ("stop", "stop_failure"):
+                raw = payload.get("stream", {}).get("result")
+                result = str(raw) if raw is not None else result
             if event_type == "stop_failure" and _is_rate_or_auth_failure(payload):
                 hit_failure = True
                 break
@@ -98,4 +102,4 @@ class AgentDispatcher:
                 f"backend '{backend}' stopped on a rate-limit/auth failure and "
                 "no local fallback is configured"
             )
-        return backend
+        return backend, result

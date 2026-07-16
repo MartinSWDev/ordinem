@@ -309,6 +309,7 @@ async def set_subtask_status(
     *,
     backend: str | None = None,
     error: str | None = None,
+    result: str | None = None,
 ) -> schemas.SubtaskRow:
     row = await conn.fetchrow("select * from subtasks where id = $1", subtask_id)
     if row is None:
@@ -324,6 +325,9 @@ async def set_subtask_status(
     if error is not None:
         args.append(error)
         sets.append(f"error = ${len(args)}")
+    if result is not None:
+        args.append(result)
+        sets.append(f"result = ${len(args)}")
     if target == SubtaskStatus.RUNNING:
         sets.append("started_at = now()")
     if target in (SubtaskStatus.DONE, SubtaskStatus.FAILED, SubtaskStatus.SKIPPED):
@@ -333,6 +337,16 @@ async def set_subtask_status(
         f"update subtasks set {', '.join(sets)} where id = $1 returning *", *args
     )
     return schemas.SubtaskRow(**dict(updated))
+
+
+async def set_subtask_worktree(
+    conn: asyncpg.Connection, subtask_id: UUID, worktree_path: str
+) -> None:
+    await conn.execute(
+        "update subtasks set worktree_path = $2 where id = $1",
+        subtask_id,
+        worktree_path,
+    )
 
 
 async def maybe_advance_ticket_to_review(

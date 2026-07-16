@@ -54,7 +54,7 @@ def test_unapproved_plan_does_not_make_a_ticket_review_ready():
     assert ticket_review_ready([SubtaskStatus.DONE, SubtaskStatus.SKIPPED])
 
 
-# --- dispatch concurrency ---------------------------------------------------
+# --- dispatch sequencing ------------------------------------------------------
 
 
 class _Recorder:
@@ -62,31 +62,25 @@ class _Recorder:
 
     def __init__(self) -> None:
         self.running: set = set()
-        self.max_docker_overlap = 0
         self.max_overlap = 0
         self.ran: list = []
 
-    async def run(self, subtask_id, *, docker: bool) -> None:
+    async def run(self, subtask_id) -> None:
         self.running.add(subtask_id)
         self.ran.append(subtask_id)
         self.max_overlap = max(self.max_overlap, len(self.running))
-        if docker:
-            self.max_docker_overlap = max(
-                self.max_docker_overlap, sum(1 for s in self.running if s in self.docker_ids)
-            )
-        await asyncio.sleep(0.01)  # let siblings interleave
+        await asyncio.sleep(0.01)  # would let siblings interleave, if any could
         self.running.discard(subtask_id)
 
 
 async def _run_plan(monkeypatch, subtasks: list[schemas.SubtaskRow]) -> _Recorder:
     rec = _Recorder()
-    rec.docker_ids = {s.id for s in subtasks if s.needs_docker}
 
     async def fake_get(conn, ticket_id):
         return subtasks
 
     async def fake_run_subtask(pool, settings, subtask_id, backend="claude"):
-        await rec.run(subtask_id, docker=subtask_id in rec.docker_ids)
+        await rec.run(subtask_id)
 
     async def fake_advance(conn, ticket_id):
         return None
@@ -114,28 +108,22 @@ class _FakePool:
         return _Ctx()
 
 
-async def test_non_docker_mini_tickets_run_in_parallel(monkeypatch):
-    subs = [_sub(order_index=i) for i in range(3)]
+async def test_mini_tickets_run_strictly_in_sequence(monkeypatch):
+    """All mini-tickets share the ticket's single worktree and branch, so two
+    agents must never be mid-run at once — they'd trip over each other's files
+    and git index. (Parallelism returns with per-subtask worktrees + merge.)"""
+    subs = [_sub(order_index=i) for i in range(3)] + [
+        _sub(order_index=3, needs_docker=True)
+    ]
     rec = await _run_plan(monkeypatch, subs)
-    assert len(rec.ran) == 3
-    assert rec.max_overlap == 3, "independent mini-tickets should not serialize"
+    assert len(rec.ran) == 4
+    assert rec.max_overlap == 1, "shared-worktree agents must serialize"
 
 
-async def test_docker_mini_tickets_never_overlap(monkeypatch):
-    """Only one OrbStack env exists — two docker agents would collide."""
-    subs = [_sub(order_index=i, needs_docker=True) for i in range(3)]
+async def test_mini_tickets_run_in_plan_order(monkeypatch):
+    subs = [_sub(order_index=i) for i in range(4)]
     rec = await _run_plan(monkeypatch, subs)
-    assert len(rec.ran) == 3
-    assert rec.max_docker_overlap == 1
-
-
-async def test_docker_runs_alongside_parallel_work(monkeypatch):
-    """Serializing docker must not stall the independent mini-tickets."""
-    subs = [_sub(order_index=0, needs_docker=True), _sub(order_index=1, needs_docker=True)]
-    subs += [_sub(order_index=2), _sub(order_index=3)]
-    rec = await _run_plan(monkeypatch, subs)
-    assert rec.max_docker_overlap == 1
-    assert rec.max_overlap > 1, "docker chain should run concurrently with the rest"
+    assert rec.ran == [s.id for s in subs]
 
 
 async def test_one_failure_does_not_stop_siblings(monkeypatch):

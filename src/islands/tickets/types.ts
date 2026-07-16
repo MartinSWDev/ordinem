@@ -100,7 +100,11 @@ export interface Subtask {
   status: SubtaskStatus;
   needs_docker: boolean;
   backend: string | null;
+  worktree_path: string | null;
   error: string | null;
+  /** The agent's closing report — a finished run may have declined to write
+   *  code; this is what you review to find out. */
+  result: string | null;
 }
 
 export interface TicketDetail {

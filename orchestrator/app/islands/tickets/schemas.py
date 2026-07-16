@@ -55,6 +55,9 @@ class SubtaskRow(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error: str | None = None
+    # The agent's closing report. A finished run may have declined to write
+    # code — this is what the user reviews to find out.
+    result: str | None = None
 
 
 class AgentEventRow(BaseModel):

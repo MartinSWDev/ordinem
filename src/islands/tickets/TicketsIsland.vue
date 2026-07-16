@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import type {
   AgentBackend,
   CheckRun,
@@ -63,6 +63,32 @@ const backendHint = computed(
 const noBackendAvailable = computed(
   () => backends.value.length > 0 && backends.value.every((b) => !b.available)
 );
+
+// --- live updates -------------------------------------------------------------
+// Agent runs mutate state in the background; while anything is running, poll
+// the detail (Jira-refresh skipped) so statuses/badges move without the user
+// clicking away and back.
+const POLL_MS = 2500;
+let pollTimer: number | undefined;
+const agentsActive = computed(
+  () =>
+    detail.value?.ticket.status === "in_progress" ||
+    (detail.value?.subtasks ?? []).some((s) => s.status === "running")
+);
+
+async function refreshQuiet() {
+  if (!detail.value) return;
+  const id = detail.value.ticket.id;
+  try {
+    const d = await api.getTicket(id, false);
+    if (selectedId.value !== id) return; // user moved on mid-flight
+    detail.value = d;
+    const idx = tickets.value.findIndex((t) => t.id === id);
+    if (idx >= 0) tickets.value[idx] = d.ticket;
+  } catch {
+    // transient poll failure — the next tick retries
+  }
+}
 
 // --- new (local) ticket -----------------------------------------------------
 const showNew = ref(false);
@@ -442,7 +468,11 @@ async function markOpened() {
 onMounted(() => {
   load();
   loadBackends();
+  pollTimer = window.setInterval(() => {
+    if (agentsActive.value) refreshQuiet();
+  }, POLL_MS);
 });
+onUnmounted(() => window.clearInterval(pollTimer));
 </script>
 
 <template>
@@ -682,8 +712,18 @@ onMounted(() => {
           <!-- approved, waiting to be set off -->
           <template v-if="hasApproved">
             <div class="approved-note">
-              Approved and ready. Dispatch sends each mini-ticket to its own agent.
+              Approved and ready. Dispatch runs the mini-tickets in order, one
+              agent at a time, in a worktree on the branch below — your checkout
+              is never touched.
             </div>
+            <label class="field">
+              <span>Branch</span>
+              <input v-model="branchName" class="input" />
+            </label>
+            <label class="check">
+              <input type="checkbox" v-model="confirmDocker" />
+              Confirm this repo's compose project is the active OrbStack project
+            </label>
             <div class="dispatch-row">
               <select v-model="backend" class="input backend-select" title="Where the agents run">
                 <option
@@ -712,19 +752,33 @@ onMounted(() => {
         <!-- Agent subtasks (ours, not Jira's) — only what passed the gate -->
         <div class="section" v-if="dispatched.length">
           <div class="label">Agent subtasks</div>
-          <div v-for="s in dispatched" :key="s.id" class="subtask">
-            <NBadge :tone="subtaskTone(s.status)" :pulse="s.status === 'running'">
-              {{ s.status }}
-            </NBadge>
-            <span>{{ s.title }}</span>
-            <NBadge v-if="s.needs_docker">docker</NBadge>
-            <span v-if="s.error" class="err small">{{ s.error }}</span>
+          <p class="muted small" v-if="detail.ticket.branch_name && dispatched.some((s) => s.worktree_path)">
+            Working on branch <b>{{ detail.ticket.branch_name }}</b> in
+            <code>{{ dispatched.find((s) => s.worktree_path)?.worktree_path }}</code>
+          </p>
+          <div v-for="s in dispatched" :key="s.id" class="subtask-block">
+            <div class="subtask">
+              <NBadge :tone="subtaskTone(s.status)" :pulse="s.status === 'running'">
+                {{ s.status }}
+              </NBadge>
+              <span>{{ s.title }}</span>
+              <NBadge v-if="s.needs_docker">docker</NBadge>
+              <NBadge v-if="s.backend" tone="muted">{{ s.backend }}</NBadge>
+            </div>
+            <details v-if="s.result || s.error" class="report">
+              <summary>{{ s.error ? "error" : "agent report" }}</summary>
+              <pre class="well small">{{ s.error ?? s.result }}</pre>
+            </details>
           </div>
         </div>
 
-        <!-- PROCESS -->
-        <div class="section process">
-          <div class="label">Set agents off</div>
+        <!-- PROCESS (no-plan fallback: one lead agent at the whole ticket) -->
+        <div class="section process" v-if="!detail.subtasks.length">
+          <div class="label">Set agents off (no plan)</div>
+          <p class="muted small" v-if="detail.ticket.actionable">
+            Skips the plan: sends one lead agent at the whole ticket. Prefer
+            "Propose mini-tickets" above for reviewable, resumable work.
+          </p>
           <template v-if="detail.ticket.actionable">
             <label class="field">
               <span>Branch</span>
@@ -769,6 +823,12 @@ onMounted(() => {
         <!-- REVIEW & SHIP (post-agent) -->
         <div class="section ship" v-if="canShip">
           <div class="label">Review &amp; ship</div>
+          <p class="muted small">
+            Read each agent report above, then open branch
+            <b>{{ detail.ticket.branch_name || "(no branch)" }}</b> in your editor
+            to review the diff. To send agents back in, propose and approve a new
+            plan above and dispatch again.
+          </p>
 
           <!-- checks -->
           <div class="ship-row">
@@ -1296,6 +1356,23 @@ onMounted(() => {
 }
 .backend-select {
   min-width: 200px;
+}
+.subtask-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.report summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.report .well {
+  margin-top: 4px;
+  max-height: 40vh;
 }
 .approved-note {
   font-size: var(--text-xs);

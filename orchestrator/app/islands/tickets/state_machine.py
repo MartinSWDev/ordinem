@@ -38,8 +38,13 @@ _TICKET_TRANSITIONS: dict[TicketStatus, set[TicketStatus]] = {
     TicketStatus.NEW: {TicketStatus.PLANNED},
     TicketStatus.PLANNED: {TicketStatus.IN_PROGRESS},
     TicketStatus.IN_PROGRESS: {TicketStatus.REVIEW},
-    # review can pass its checks (ready_to_push) or fail them (checks_failed)
-    TicketStatus.REVIEW: {TicketStatus.CHECKS_FAILED, TicketStatus.READY_TO_PUSH},
+    # review can pass its checks (ready_to_push), fail them (checks_failed), or
+    # go back to the agents (a new approved plan re-dispatched from review)
+    TicketStatus.REVIEW: {
+        TicketStatus.CHECKS_FAILED,
+        TicketStatus.READY_TO_PUSH,
+        TicketStatus.IN_PROGRESS,
+    },
     # manual intervention only: back to the agent, or forward once fixed by hand
     TicketStatus.CHECKS_FAILED: {TicketStatus.IN_PROGRESS, TicketStatus.READY_TO_PUSH},
     TicketStatus.READY_TO_PUSH: {TicketStatus.PUSHED},

@@ -33,7 +33,9 @@ export function useTickets(island: Island) {
     /** Live-probed dispatch targets (claude / cursor / local) for the picker. */
     listBackends: () => request<AgentBackend[]>("GET", "/backends"),
     createLocalTicket: (t: NewLocalTicket) => request<Ticket>("POST", "/local", t),
-    getTicket: (id: string) => request<TicketDetail>("GET", `/${id}`),
+    /** refresh=false skips the Jira re-fetch — use it when polling. */
+    getTicket: (id: string, refresh = true) =>
+      request<TicketDetail>("GET", `/${id}${refresh ? "" : "?refresh=false"}`),
     processTicket: (id: string, branchName: string, confirmDocker: boolean, backend: string) =>
       request<TicketDetail>("POST", `/${id}/process`, {
         branch_name: branchName,

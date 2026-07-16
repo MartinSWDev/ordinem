@@ -52,11 +52,17 @@ transition, so no route can dispatch unapproved work. See
 `src/islands/tickets/` renders this. The desktop island's `endpoint_base` points
 at `…/tickets`.
 
-## Dispatch backends
+## Dispatch backends & worktrees
 
-A dispatched mini-ticket runs through a headless agent CLI spawned in the
-repo's `local_path` (`services/backends.py`). One-time setup per machine, then
-the UI picker (`GET /tickets/backends`) shows what's available:
+A dispatched mini-ticket runs through a headless agent CLI
+(`services/backends.py`) inside the ticket's git worktree
+(`dispatch.ensure_ticket_worktree`): `<repo>-worktrees/<branch>`, created from
+the repo's default branch on first dispatch. The user's own checkout is never
+touched, and the branch in the prompt is the branch under the agent's feet.
+Mini-tickets share that worktree, so they run strictly in sequence, in plan
+order; each stores the agent's closing report on `subtasks.result` (a finished
+run may have declined to write code — the report says why). One-time setup per
+machine, then the UI picker (`GET /tickets/backends`) shows what's available:
 
 - **claude** — Claude Code CLI, billed to the logged-in Claude subscription
   (`npm i -g @anthropic-ai/claude-code`, run `claude` once to log in).
@@ -66,6 +72,6 @@ the UI picker (`GET /tickets/backends`) shows what's available:
   local model); listed as available only while the proxy answers a probe.
 
 A rate-limit/auth stop on a subscription backend re-dispatches the subtask on
-`local` when configured (section 7.6). Parsing teammate subtasks from the live
-stream is still an open seam; a `/process` run is a single coordination
-subtask until then.
+`local` when configured (section 7.6). Per-subtask worktrees + a merge step
+(restoring parallel dispatch) are a deliberate later step; a `/process` run is
+a single coordination subtask until then.
