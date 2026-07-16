@@ -85,7 +85,7 @@ async def _run_plan(monkeypatch, subtasks: list[schemas.SubtaskRow]) -> _Recorde
     async def fake_get(conn, ticket_id):
         return subtasks
 
-    async def fake_run_subtask(pool, settings, subtask_id):
+    async def fake_run_subtask(pool, settings, subtask_id, backend="claude"):
         await rec.run(subtask_id, docker=subtask_id in rec.docker_ids)
 
     async def fake_advance(conn, ticket_id):
@@ -147,7 +147,7 @@ async def test_one_failure_does_not_stop_siblings(monkeypatch):
     async def fake_get(conn, ticket_id):
         return subs
 
-    async def fake_run_subtask(pool, settings, subtask_id):
+    async def fake_run_subtask(pool, settings, subtask_id, backend="claude"):
         if subtask_id == boom:
             raise RuntimeError("agent died")
         ran.append(subtask_id)

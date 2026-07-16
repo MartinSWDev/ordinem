@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import type {
+  AgentBackend,
   CheckRun,
   CommitPlan,
   PrDraft,
@@ -38,6 +39,30 @@ const branchName = ref("");
 const confirmDocker = ref(false);
 const processing = ref(false);
 const processError = ref<string | null>(null);
+
+// --- dispatch backends (where the agents run) --------------------------------
+// Probed live by the orchestrator; one-time CLI logins on the machine make
+// them available. The chosen backend applies to both dispatch buttons.
+const backends = ref<AgentBackend[]>([]);
+const backend = ref("claude");
+
+async function loadBackends() {
+  try {
+    backends.value = await api.listBackends();
+    const current = backends.value.find((b) => b.name === backend.value);
+    if (!current?.available) {
+      backend.value = backends.value.find((b) => b.available)?.name ?? backend.value;
+    }
+  } catch {
+    // Older orchestrator without /backends — keep the default silently.
+  }
+}
+const backendHint = computed(
+  () => backends.value.find((b) => b.name === backend.value)?.detail ?? null
+);
+const noBackendAvailable = computed(
+  () => backends.value.length > 0 && backends.value.every((b) => !b.available)
+);
 
 // --- new (local) ticket -----------------------------------------------------
 const showNew = ref(false);
@@ -268,7 +293,8 @@ async function dispatchPlan() {
     detail.value = await api.dispatchPlan(
       detail.value.ticket.id,
       branchName.value,
-      confirmDocker.value
+      confirmDocker.value,
+      backend.value
     );
     const idx = tickets.value.findIndex((t) => t.id === detail.value!.ticket.id);
     if (idx >= 0) tickets.value[idx] = detail.value.ticket;
@@ -297,7 +323,8 @@ async function process() {
     detail.value = await api.processTicket(
       detail.value.ticket.id,
       branchName.value,
-      confirmDocker.value
+      confirmDocker.value,
+      backend.value
     );
     // reflect the new status in the list too
     const idx = tickets.value.findIndex((t) => t.id === detail.value!.ticket.id);
@@ -412,7 +439,10 @@ async function markOpened() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  loadBackends();
+});
 </script>
 
 <template>
@@ -654,13 +684,27 @@ onMounted(load);
             <div class="approved-note">
               Approved and ready. Dispatch sends each mini-ticket to its own agent.
             </div>
-            <NButton
-              variant="primary"
-              :disabled="dispatching || !branchName"
-              @click="dispatchPlan"
-            >
-              {{ dispatching ? "Dispatching…" : "Dispatch agents" }}
-            </NButton>
+            <div class="dispatch-row">
+              <select v-model="backend" class="input backend-select" title="Where the agents run">
+                <option
+                  v-for="b in backends"
+                  :key="b.name"
+                  :value="b.name"
+                  :disabled="!b.available"
+                >
+                  {{ b.label }}{{ b.available ? "" : " — unavailable" }}
+                </option>
+                <option v-if="!backends.length" value="claude">Claude Code</option>
+              </select>
+              <NButton
+                variant="primary"
+                :disabled="dispatching || !branchName || noBackendAvailable"
+                @click="dispatchPlan"
+              >
+                {{ dispatching ? "Dispatching…" : "Dispatch agents" }}
+              </NButton>
+            </div>
+            <p v-if="backendHint" class="muted small">{{ backendHint }}</p>
           </template>
           <p v-if="planError" class="err">{{ planError }}</p>
         </div>
@@ -690,9 +734,30 @@ onMounted(load);
               <input type="checkbox" v-model="confirmDocker" />
               Confirm this repo's compose project is the active OrbStack project
             </label>
-            <NButton variant="primary" :disabled="processing || !branchName" @click="process">
-              {{ processing ? "Dispatching…" : "Process ticket" }}
-            </NButton>
+            <div class="dispatch-row">
+              <select v-model="backend" class="input backend-select" title="Where the agent runs">
+                <option
+                  v-for="b in backends"
+                  :key="b.name"
+                  :value="b.name"
+                  :disabled="!b.available"
+                >
+                  {{ b.label }}{{ b.available ? "" : " — unavailable" }}
+                </option>
+                <option v-if="!backends.length" value="claude">Claude Code</option>
+              </select>
+              <NButton
+                variant="primary"
+                :disabled="processing || !branchName || noBackendAvailable"
+                @click="process"
+              >
+                {{ processing ? "Dispatching…" : "Process ticket" }}
+              </NButton>
+            </div>
+            <p v-if="noBackendAvailable" class="muted small">
+              No agent backend available on this machine — log in to Claude Code
+              (`claude`) or Cursor (`cursor-agent login`), or start the local proxy.
+            </p>
             <p v-if="processError" class="err">{{ processError }}</p>
           </template>
           <p v-else class="muted">
@@ -1222,6 +1287,15 @@ onMounted(load);
 .plan-actions {
   display: flex;
   gap: var(--space-2);
+}
+.dispatch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.backend-select {
+  min-width: 200px;
 }
 .approved-note {
   font-size: var(--text-xs);

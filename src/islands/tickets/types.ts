@@ -167,3 +167,12 @@ export interface ProposedSubtask {
   description: string;
   needs_docker: boolean;
 }
+
+/** A dispatch target (agent CLI) probed live by the orchestrator. */
+export interface AgentBackend {
+  name: string;
+  label: string;
+  available: boolean;
+  /** Why it's unavailable (missing CLI / proxy down), with the fix. */
+  detail: string | null;
+}

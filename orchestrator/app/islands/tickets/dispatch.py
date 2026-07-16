@@ -2,15 +2,15 @@
 repository, and the AgentDispatcher.
 
 The deterministic parts (repo lookup, docker-project gate, branch confirmation,
-status transitions, review roll-up, Qwen requeue bookkeeping) run here and now.
-The one env-dependent seam is parsing teammate subtasks out of the live SDK
-stream — that requires the Agent SDK + a real worktree/docker environment and is
-marked clearly below.
+status transitions, review roll-up, local-fallback bookkeeping) run here and
+now. The agent itself is a backend CLI (Claude Code / Cursor / local proxy —
+see services/backends.py) spawned in the repo's checkout.
 """
 
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from uuid import UUID
 
 import asyncpg
@@ -100,21 +100,29 @@ async def prepare_dispatch(
                 )
 
 
+def _repo_checkout_dir(repo_row) -> str:
+    """The directory the agent CLI runs in: the repo's registered checkout,
+    falling back to the compose file's directory."""
+    if repo_row["local_path"]:
+        return repo_row["local_path"]
+    if repo_row["docker_compose_path"]:
+        return str(Path(repo_row["docker_compose_path"]).parent)
+    raise DispatchError(
+        "repo has no local_path (or docker_compose_path) to run the agent in; "
+        "set repos.local_path to the checkout"
+    )
+
+
 async def run_subtask(
     pool: asyncpg.Pool,
     settings: Settings,
     subtask_id: UUID,
+    backend: str = "claude",
 ) -> None:
-    """Run a single already-created subtask through the agent, streaming events
-    to the DB and recording the completing backend. Handles the Qwen fallback
-    via AgentDispatcher. Marks the subtask done/failed and advances the ticket
-    to review when appropriate.
-
-    NOTE: creating subtask rows from the live lead-agent stream (one per
-    teammate, section 7.5) is the env-dependent seam — it needs the Agent SDK
-    and a real worktree/docker environment. This function runs a subtask once it
-    exists; wiring the stream->create_subtask parser happens when the SDK lands.
-    """
+    """Run a single already-created subtask through the chosen backend,
+    streaming events to the DB and recording the completing backend. Handles
+    the local-proxy fallback via AgentDispatcher. Marks the subtask done/failed
+    and advances the ticket to review when appropriate."""
     sink = DbEventSink(pool)
     dispatcher = AgentDispatcher(settings, sink)
 
@@ -125,14 +133,22 @@ async def run_subtask(
         ticket = await repository.get_ticket(conn, subtask.ticket_id)
         if ticket is None:
             raise DispatchError("subtask has no ticket")
+        repo_row = await conn.fetchrow(
+            "select * from repos where id = $1", ticket.repo_id
+        )
+        if repo_row is None:
+            raise DispatchError("subtask's ticket has no repo")
 
     try:
+        cwd = _repo_checkout_dir(repo_row)
         completed_backend = await dispatcher.dispatch(
             subtask_id=subtask_id,
             branch_name=ticket.branch_name or ticket.jira_key,
             ticket_title=ticket.title,
             ticket_description=ticket.description,
             processing_instructions=ticket.processing_instructions,
+            backend=backend,
+            cwd=cwd,
         )
     except Exception as exc:  # noqa: BLE001 - persist the failure, don't crash the worker
         async with pool.acquire() as conn:
@@ -152,6 +168,7 @@ async def run_ticket_plan(
     pool: asyncpg.Pool,
     settings: Settings,
     ticket_id: UUID,
+    backend: str = "claude",
 ) -> None:
     """Run every approved mini-ticket for a ticket (called detached by /dispatch).
 
@@ -174,7 +191,7 @@ async def run_ticket_plan(
 
     async def _run(subtask_id: UUID) -> None:
         try:
-            await run_subtask(pool, settings, subtask_id)
+            await run_subtask(pool, settings, subtask_id, backend)
         except Exception:  # noqa: BLE001 - already recorded on the subtask row
             pass
 
@@ -194,15 +211,15 @@ async def run_ticket_agent(
     pool: asyncpg.Pool,
     settings: Settings,
     ticket_id: UUID,
+    backend: str = "claude",
 ) -> None:
     """Kick off the agent for a ticket (called in the background by /process).
 
-    Creates the lead coordination subtask and runs it. As the real Agent SDK
-    lands, this is where the lead-agent stream is parsed into one subtask per
-    teammate (section 7.5); for now the lead run is a single coordination
-    subtask, and its agent_events feed the live progress view. Failures (e.g.
-    the SDK not installed) are recorded on the subtask, not raised to the
-    caller — this runs detached from the request."""
+    Creates the lead coordination subtask and runs it on the chosen backend.
+    The lead run is a single coordination subtask, and its agent_events feed
+    the live progress view. Failures (e.g. the backend CLI missing) are
+    recorded on the subtask, not raised to the caller — this runs detached
+    from the request."""
     async with pool.acquire() as conn:
         lead = await repository.create_subtask(
             conn,
@@ -211,4 +228,4 @@ async def run_ticket_agent(
             description="Lead agent: plan and coordinate subtasks.",
             order_index=0,
         )
-    await run_subtask(pool, settings, lead.id)
+    await run_subtask(pool, settings, lead.id, backend)

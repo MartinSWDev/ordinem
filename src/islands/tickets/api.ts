@@ -1,6 +1,7 @@
 import { islandClient } from "../../core/api";
 import type { Island } from "../../core/types";
 import type {
+  AgentBackend,
   CheckRun,
   CommitPlan,
   MyTicketsSyncResult,
@@ -29,12 +30,15 @@ export function useTickets(island: Island) {
       request<Ticket[]>("GET", `${project ? `?project=${encodeURIComponent(project)}` : ""}`),
     syncMyTickets: () => request<MyTicketsSyncResult>("POST", "/sync"),
     listRepos: () => request<RepoRef[]>("GET", "/repos"),
+    /** Live-probed dispatch targets (claude / cursor / local) for the picker. */
+    listBackends: () => request<AgentBackend[]>("GET", "/backends"),
     createLocalTicket: (t: NewLocalTicket) => request<Ticket>("POST", "/local", t),
     getTicket: (id: string) => request<TicketDetail>("GET", `/${id}`),
-    processTicket: (id: string, branchName: string, confirmDocker: boolean) =>
+    processTicket: (id: string, branchName: string, confirmDocker: boolean, backend: string) =>
       request<TicketDetail>("POST", `/${id}/process`, {
         branch_name: branchName,
         confirm_active_docker_project: confirmDocker,
+        backend,
       }),
     // --- plan -> gate -> dispatch ---
     /** Ask the planner for mini-tickets. Nothing runs until you approve. */
@@ -42,10 +46,11 @@ export function useTickets(island: Island) {
     /** The gate: your final list becomes the dispatchable work. */
     approvePlan: (id: string, miniTickets: ProposedSubtask[]) =>
       request<Subtask[]>("POST", `/${id}/plan/approve`, { mini_tickets: miniTickets }),
-    dispatchPlan: (id: string, branchName: string, confirmDocker: boolean) =>
+    dispatchPlan: (id: string, branchName: string, confirmDocker: boolean, backend: string) =>
       request<TicketDetail>("POST", `/${id}/dispatch`, {
         branch_name: branchName,
         confirm_active_docker_project: confirmDocker,
+        backend,
       }),
     // --- review & ship ---
     runChecks: (id: string) => request<CheckRun>("POST", `/${id}/checks`),

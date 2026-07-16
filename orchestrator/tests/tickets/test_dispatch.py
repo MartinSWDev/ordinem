@@ -23,6 +23,10 @@ class _FakeConn:
     async def __aexit__(self, *exc):
         return False
 
+    async def fetchrow(self, query, *args):
+        # The repo row run_subtask resolves the agent's cwd from.
+        return {"local_path": "/tmp/repo", "docker_compose_path": None}
+
 
 class _FakePool:
     def __init__(self, store):
@@ -42,17 +46,19 @@ async def test_run_ticket_agent_creates_lead_subtask_and_runs_it(monkeypatch):
         created.update(ticket_id=ticket_id, title=title, order_index=order_index)
         return types.SimpleNamespace(id=lead_id)
 
-    async def fake_run_subtask(pool, settings, subtask_id):
+    async def fake_run_subtask(pool, settings, subtask_id, backend="claude"):
         ran["subtask_id"] = subtask_id
+        ran["backend"] = backend
 
     monkeypatch.setattr(dispatch_mod.repository, "create_subtask", fake_create_subtask)
     monkeypatch.setattr(dispatch_mod, "run_subtask", fake_run_subtask)
 
-    await dispatch_mod.run_ticket_agent(_FakePool({}), object(), ticket_id)
+    await dispatch_mod.run_ticket_agent(_FakePool({}), object(), ticket_id, "cursor")
 
     assert created["ticket_id"] == ticket_id
     assert created["order_index"] == 0
     assert ran["subtask_id"] == lead_id
+    assert ran["backend"] == "cursor", "the chosen backend must reach the run"
 
 
 async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
@@ -69,7 +75,7 @@ async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
     async def fake_get_ticket(conn, tid):
         return types.SimpleNamespace(
             branch_name="feat/x", jira_key="PROJ-1", title="t",
-            description=None, processing_instructions=None,
+            description=None, processing_instructions=None, repo_id=uuid4(),
         )
 
     class FailingDispatcher:
@@ -77,7 +83,7 @@ async def test_run_subtask_marks_failed_when_dispatch_raises(monkeypatch):
             pass
 
         async def dispatch(self, **kwargs):
-            raise RuntimeError("claude-agent-sdk is not installed")
+            raise RuntimeError("'claude' not installed")
 
     monkeypatch.setattr(dispatch_mod.repository, "set_subtask_status", fake_set_status)
     monkeypatch.setattr(dispatch_mod.repository, "get_ticket", fake_get_ticket)

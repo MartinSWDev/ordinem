@@ -16,11 +16,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# The Claude Agent SDK is imported lazily by the dispatch service so the rest of
-# the API runs without it installed. Install with: uv sync --extra agent
-agent = [
-    "claude-agent-sdk>=0.1.0",
-]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

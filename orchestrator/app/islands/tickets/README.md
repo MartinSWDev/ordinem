@@ -15,7 +15,8 @@ it owns ticket ingestion, the agent dispatch, and the review-and-ship stage.
 | `state_machine.py` | Ticket + subtask status transitions (validated centrally) |
 | `dispatch.py` | Section-7 orchestration: preconditions, transitions, `run_ticket_agent` |
 | `services/jira.py` | Jira Cloud REST client (search/fetch, curated normalization, attachment proxy) |
-| `services/agent.py` | Claude Agent SDK dispatch + StopFailure → Qwen fallback (lazy-imported) |
+| `services/agent.py` | Runs one subtask through a backend CLI + StopFailure → local fallback |
+| `services/backends.py` | Dispatch backends: Claude Code / Cursor / local proxy, probing + stream-json classification |
 | `services/checks.py` | Shells out to the repo's existing pre-push hook |
 | `services/pr.py` | PR-template parsing + auto-fill |
 | `services/policy.py` | Fixed policy preamble prepended to every agent dispatch |
@@ -51,9 +52,20 @@ transition, so no route can dispatch unapproved work. See
 `src/islands/tickets/` renders this. The desktop island's `endpoint_base` points
 at `…/tickets`.
 
-## Seams
+## Dispatch backends
 
-The live agent run (`services/agent.py` + `dispatch.run_subtask`) needs the Agent
-SDK + a real worktree/docker environment. Parsing teammate subtasks from the live
-SDK stream is the one env-dependent seam; the lead run is a single coordination
+A dispatched mini-ticket runs through a headless agent CLI spawned in the
+repo's `local_path` (`services/backends.py`). One-time setup per machine, then
+the UI picker (`GET /tickets/backends`) shows what's available:
+
+- **claude** — Claude Code CLI, billed to the logged-in Claude subscription
+  (`npm i -g @anthropic-ai/claude-code`, run `claude` once to log in).
+- **cursor** — Cursor CLI (`curl https://cursor.com/install -fsS | bash`,
+  `cursor-agent login`).
+- **local** — Claude CLI pointed at `LOCAL_PROXY_URL` (LiteLLM in front of a
+  local model); listed as available only while the proxy answers a probe.
+
+A rate-limit/auth stop on a subscription backend re-dispatches the subtask on
+`local` when configured (section 7.6). Parsing teammate subtasks from the live
+stream is still an open seam; a `/process` run is a single coordination
 subtask until then.

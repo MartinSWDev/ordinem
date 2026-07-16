@@ -22,6 +22,12 @@ from app.islands.tickets.dispatch import (
     run_ticket_plan,
 )
 from app.islands.tickets.services import planner
+from app.islands.tickets.services.backends import (
+    BackendInfo,
+    BackendUnavailable,
+    build_backend,
+    list_backends,
+)
 from app.islands.tickets.services.checks import run_pre_push_checks
 from app.islands.tickets.services.jira import JiraClient, JiraError, JiraNotConfigured
 from app.islands.tickets.services.pr import build_template_fields
@@ -51,8 +57,27 @@ def _launch(coro: Coroutine, ticket_id: UUID, label: str) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-def _launch_agent(pool: asyncpg.Pool, settings: Settings, ticket_id: UUID) -> None:
-    _launch(run_ticket_agent(pool, settings, ticket_id), ticket_id, "agent run")
+def _launch_agent(
+    pool: asyncpg.Pool, settings: Settings, ticket_id: UUID, backend: str
+) -> None:
+    _launch(run_ticket_agent(pool, settings, ticket_id, backend), ticket_id, "agent run")
+
+
+def _require_backend(settings: Settings, name: str) -> None:
+    """409 with the backend's own fix-it message if it can't run here."""
+    try:
+        build_backend(settings, name)
+    except BackendUnavailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.get("/backends", response_model=list[BackendInfo])
+async def list_agent_backends(
+    settings: Settings = Depends(get_config),
+) -> list[BackendInfo]:
+    """Probe the dispatch backends (Claude Code / Cursor / local proxy) so the
+    UI can offer a picker with live availability."""
+    return await list_backends(settings)
 
 
 @router.get("/repos", response_model=list[repos.RepoRow])
@@ -326,6 +351,7 @@ async def dispatch_plan_route(
             status_code=409,
             detail="a mini-ticket needs docker; confirm the repo's compose project is the active OrbStack project",
         )
+    _require_backend(settings, body.backend)
 
     try:
         await prepare_dispatch(
@@ -337,7 +363,11 @@ async def dispatch_plan_route(
     except DispatchError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    _launch(run_ticket_plan(pool, settings, ticket_id), ticket_id, "plan dispatch")
+    _launch(
+        run_ticket_plan(pool, settings, ticket_id, body.backend),
+        ticket_id,
+        "plan dispatch",
+    )
 
     async with pool.acquire() as conn:
         detail = await repository.get_ticket_detail(conn, ticket_id)
@@ -356,6 +386,7 @@ async def process_ticket(
     preconditions + transition to in_progress synchronously, then launches the
     agent run in the background (streaming agent_events the live view consumes).
     Returns immediately with the ticket now in_progress."""
+    _require_backend(settings, body.backend)
     try:
         await prepare_dispatch(
             pool,
@@ -366,7 +397,7 @@ async def process_ticket(
     except DispatchError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
-    _launch_agent(pool, settings, ticket_id)
+    _launch_agent(pool, settings, ticket_id, body.backend)
 
     async with pool.acquire() as conn:
         detail = await repository.get_ticket_detail(conn, ticket_id)

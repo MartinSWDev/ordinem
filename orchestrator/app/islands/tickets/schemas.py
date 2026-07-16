@@ -137,6 +137,10 @@ class DispatchPlanRequest(BaseModel):
         False,
         description="Acknowledge the repo's compose project is the active OrbStack project; required if any mini-ticket needs docker.",
     )
+    backend: str = Field(
+        "claude",
+        description="Where the agents run: claude | cursor | local (see GET /tickets/backends).",
+    )
 
 
 class IngestTicketRequest(BaseModel):
@@ -153,6 +157,10 @@ class ProcessTicketRequest(BaseModel):
     confirm_active_docker_project: bool = Field(
         False,
         description="Set true to acknowledge the repo's compose project is the active OrbStack project (section 7.2).",
+    )
+    backend: str = Field(
+        "claude",
+        description="Where the agent runs: claude | cursor | local (see GET /tickets/backends).",
     )
 
 

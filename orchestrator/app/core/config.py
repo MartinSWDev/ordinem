@@ -44,8 +44,28 @@ class Settings(BaseSettings):
     anthropic_base_url: str = ""  # blank = SDK default (api.anthropic.com)
     review_model: str = "claude-opus-4-8"
 
-    # Qwen fallback
+    # Agent dispatch backends (see app/islands/tickets/services/backends.py).
+    # The CLIs authenticate via their own one-time subscription logins; the
+    # orchestrator only needs to find the binaries.
+    claude_cli: str = "claude"
+    cursor_cli: str = "cursor-agent"
+    # --permission-mode for the Claude CLI runs. "acceptEdits" auto-approves
+    # file edits but not arbitrary commands; set "bypassPermissions" for fully
+    # unattended runs (the policy preamble still forbids `git push`).
+    agent_permission_mode: str = "acceptEdits"
+    # cursor-agent can't prompt in headless mode; --force lets it run commands
+    # (tests, lint) instead of stalling. Set false to keep it edit-only.
+    cursor_force: bool = True
+    agent_timeout_seconds: int = 3600
+
+    # Local model behind an Anthropic-compatible proxy (LiteLLM). The old
+    # QWEN_PROXY_URL keeps working as a fallback name.
+    local_proxy_url: str = ""
     qwen_proxy_url: str = ""
+
+    @property
+    def local_proxy(self) -> str:
+        return self.local_proxy_url or self.qwen_proxy_url
 
     # Server
     host: str = "127.0.0.1"
