@@ -32,6 +32,22 @@ class Settings(BaseSettings):
     # Calendar (read-only private iCal feeds, comma-separated)
     calendar_ics_urls: str = ""
 
+    # Calendar via Google OAuth (read-only) — an alternative source to the ICS
+    # feeds, for calendars whose secret iCal address is disabled. When
+    # configured AND connected it takes precedence over CALENDAR_ICS_URLS.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_oauth_redirect_uri: str = "http://127.0.0.1:8787/calendar/oauth/callback"
+    google_calendar_ids: str = "primary"  # comma-separated calendar ids
+
+    @property
+    def google_calendar_id_list(self) -> list[str]:
+        return [c.strip() for c in self.google_calendar_ids.split(",") if c.strip()]
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
     # Todoist (read-only task rollup)
     todoist_api_token: str = ""
 
