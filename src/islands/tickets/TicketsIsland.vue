@@ -232,15 +232,35 @@ async function createLocal() {
   }
 }
 
-// --- grouping ---------------------------------------------------------------
+// --- grouping (collapsible accordion, closed by default) --------------------
+function projectKeyOf(t: Ticket): string {
+  return t.jira_project_key ?? (t.source === "local" ? "Local" : "—");
+}
 const groups = computed(() => {
   const byProject = new Map<string, Ticket[]>();
   for (const t of tickets.value) {
-    const key = t.jira_project_key ?? (t.source === "local" ? "Local" : "—");
+    const key = projectKeyOf(t);
     (byProject.get(key) ?? byProject.set(key, []).get(key)!).push(t);
   }
   return [...byProject.entries()].sort(([a], [b]) => a.localeCompare(b));
 });
+
+// Which project groups are expanded. Empty = all collapsed (the default), so
+// you open only the one you want.
+const openProjects = ref<Set<string>>(new Set());
+const isProjectOpen = (key: string) => openProjects.value.has(key);
+function toggleProject(key: string) {
+  const next = new Set(openProjects.value);
+  next.has(key) ? next.delete(key) : next.add(key);
+  openProjects.value = next;
+}
+function openProject(key: string) {
+  if (!openProjects.value.has(key)) {
+    openProjects.value = new Set(openProjects.value).add(key);
+  }
+}
+/** A collapsed group flashes if any ticket inside is waiting on you. */
+const groupNeedsYou = (items: Ticket[]) => items.some((t) => t.awaiting_input);
 
 // --- status/priority display -----------------------------------------------
 function statusTone(s: TicketStatus): "accent" | "success" | "muted" {
@@ -310,6 +330,7 @@ async function sync() {
 
 async function select(t: Ticket) {
   selectedId.value = t.id;
+  openProject(projectKeyOf(t));
   detail.value = null;
   conversation.value = null;
   detailError.value = null;
@@ -635,31 +656,41 @@ onUnmounted(() => window.clearInterval(pollTimer));
       </p>
 
       <div v-for="[project, items] in groups" :key="project" class="group">
-        <div class="group-head">
-          <span>{{ project }}</span><span>{{ items.length }}</span>
-        </div>
         <button
-          v-for="t in items"
-          :key="t.id"
-          class="ticket-card"
-          :class="{ active: t.id === selectedId, unactionable: !t.actionable }"
-          @click="select(t)"
+          class="group-head"
+          :class="{ open: isProjectOpen(project) }"
+          @click="toggleProject(project)"
         >
-          <div class="row1">
-            <span class="key">{{ t.jira_key ?? "LOCAL" }}</span>
-            <NBadge v-if="t.awaiting_input" tone="accent" pulse>needs you</NBadge>
-            <NBadge v-else :tone="statusTone(t.status)" :pulse="statusPulses(t.status)">
-              {{ t.status }}
-            </NBadge>
-          </div>
-          <div class="title">{{ t.title }}</div>
-          <div class="row2">
-            <NBadge v-if="priorityOf(t)">{{ priorityOf(t) }}</NBadge>
-            <span v-if="!t.actionable" class="lock" title="No checkout bound — open it to pick one">
-              no checkout
-            </span>
-          </div>
+          <span class="chevron">▸</span>
+          <span class="group-name">{{ project }}</span>
+          <span v-if="groupNeedsYou(items)" class="group-dot" title="A ticket here is waiting on you" />
+          <span class="spacer" />
+          <span class="group-count">{{ items.length }}</span>
         </button>
+        <div v-show="isProjectOpen(project)" class="group-body">
+          <button
+            v-for="t in items"
+            :key="t.id"
+            class="ticket-card"
+            :class="{ active: t.id === selectedId, unactionable: !t.actionable }"
+            @click="select(t)"
+          >
+            <div class="row1">
+              <span class="key">{{ t.jira_key ?? "LOCAL" }}</span>
+              <NBadge v-if="t.awaiting_input" tone="accent" pulse>needs you</NBadge>
+              <NBadge v-else :tone="statusTone(t.status)" :pulse="statusPulses(t.status)">
+                {{ t.status }}
+              </NBadge>
+            </div>
+            <div class="title">{{ t.title }}</div>
+            <div class="row2">
+              <NBadge v-if="priorityOf(t)">{{ priorityOf(t) }}</NBadge>
+              <span v-if="!t.actionable" class="lock" title="No checkout bound — open it to pick one">
+                no checkout
+              </span>
+            </div>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -1133,13 +1164,61 @@ onUnmounted(() => window.clearInterval(pollTimer));
 }
 .group-head {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  background: var(--surface);
+  box-shadow: var(--shadow-out);
+  border-radius: var(--r-md);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-dim);
-  padding: 0 2px;
+  padding: 8px 12px;
+  margin-top: var(--sp-2);
+  transition: box-shadow 140ms ease;
+}
+.group-head:hover {
+  color: var(--text);
+}
+.group-head.open {
+  box-shadow: var(--shadow-in);
+  color: var(--text);
+}
+.chevron {
+  display: inline-block;
+  transition: transform 140ms ease;
+  font-size: 9px;
+}
+.group-head.open .chevron {
+  transform: rotate(90deg);
+}
+.group-name {
+  flex: none;
+}
+.group-count {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: group-pulse 1.6s ease-in-out infinite;
+}
+@keyframes group-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.group-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
   margin-top: var(--sp-2);
 }
 
