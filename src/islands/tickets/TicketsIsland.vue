@@ -232,13 +232,87 @@ async function createLocal() {
   }
 }
 
+// --- status filter ----------------------------------------------------------
+// Filters on the Jira workflow status (e.g. "Approved", "Dev Done"); local
+// tickets fall back to their internal status. Choices persist; finished
+// statuses start hidden. A ticket awaiting your reply is never hidden.
+const HIDDEN_KEY = "ordinem.tickets.hiddenStatuses";
+
+function statusLabelOf(t: Ticket): string {
+  return t.jira?.status ?? t.status.replace(/_/g, " ");
+}
+function isDoneish(t: Ticket): boolean {
+  if (t.jira?.status_category) return t.jira.status_category.toLowerCase() === "done";
+  return t.status === "done" || t.status === "pushed" || t.status === "abandoned";
+}
+
+const hiddenStatuses = ref<Set<string>>(new Set());
+let filterPrefsLoaded = false;
+
+function persistFilterPrefs() {
+  try {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...hiddenStatuses.value]));
+  } catch {
+    /* storage unavailable — filter is session-only */
+  }
+}
+function loadFilterPrefs() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    if (raw) {
+      hiddenStatuses.value = new Set(JSON.parse(raw));
+      filterPrefsLoaded = true;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+/** First ever run: hide the finished statuses by default. */
+function seedDefaultHidden() {
+  if (filterPrefsLoaded) return;
+  const done = new Set<string>();
+  for (const t of tickets.value) if (isDoneish(t)) done.add(statusLabelOf(t));
+  hiddenStatuses.value = done;
+  filterPrefsLoaded = true;
+  persistFilterPrefs();
+}
+
+const statusFacets = computed(() => {
+  const counts = new Map<string, number>();
+  for (const t of tickets.value) {
+    const label = statusLabelOf(t);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, count]) => ({ label, count, hidden: hiddenStatuses.value.has(label) }));
+});
+const hiddenCount = computed(() => statusFacets.value.filter((f) => f.hidden).length);
+
+function toggleStatus(label: string) {
+  const next = new Set(hiddenStatuses.value);
+  next.has(label) ? next.delete(label) : next.add(label);
+  hiddenStatuses.value = next;
+  persistFilterPrefs();
+}
+function showAllStatuses() {
+  hiddenStatuses.value = new Set();
+  persistFilterPrefs();
+}
+
+const visibleTickets = computed(() =>
+  tickets.value.filter(
+    (t) => t.awaiting_input || !hiddenStatuses.value.has(statusLabelOf(t))
+  )
+);
+
 // --- grouping (collapsible accordion, closed by default) --------------------
 function projectKeyOf(t: Ticket): string {
   return t.jira_project_key ?? (t.source === "local" ? "Local" : "—");
 }
 const groups = computed(() => {
   const byProject = new Map<string, Ticket[]>();
-  for (const t of tickets.value) {
+  for (const t of visibleTickets.value) {
     const key = projectKeyOf(t);
     (byProject.get(key) ?? byProject.set(key, []).get(key)!).push(t);
   }
@@ -303,6 +377,7 @@ async function load() {
   error.value = null;
   try {
     tickets.value = await api.listTickets();
+    seedDefaultHidden();
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : String(e);
   } finally {
@@ -317,6 +392,7 @@ async function sync() {
   try {
     const res = await api.syncMyTickets();
     tickets.value = res.tickets;
+    seedDefaultHidden();
     syncNote.value = `Synced ${res.synced} ticket${res.synced === 1 ? "" : "s"}`;
     if (res.unregistered_projects.length) {
       syncNote.value += ` · unregistered: ${res.unregistered_projects.join(", ")}`;
@@ -583,6 +659,7 @@ async function markOpened() {
 }
 
 onMounted(() => {
+  loadFilterPrefs();
   load();
   loadBackends();
   loadRepoCandidates();
@@ -599,13 +676,37 @@ onUnmounted(() => window.clearInterval(pollTimer));
     <div class="list-col">
       <div class="list-head">
         <h2>Tickets</h2>
-        <span class="count">{{ tickets.length }}</span>
+        <span class="count">
+          {{ visibleTickets.length }}<template v-if="visibleTickets.length !== tickets.length">/{{ tickets.length }}</template>
+        </span>
         <div class="spacer" />
         <NButton size="sm" @click="openNew">New ticket</NButton>
         <NButton size="sm" variant="primary" :disabled="syncing" @click="sync">
           {{ syncing ? "Syncing…" : "Sync from Jira" }}
         </NButton>
       </div>
+
+      <!-- STATUS FILTER -->
+      <details v-if="statusFacets.length > 1" class="filter">
+        <summary>
+          Status filter<span v-if="hiddenCount" class="filter-note">· {{ hiddenCount }} hidden</span>
+        </summary>
+        <div class="facets">
+          <button
+            v-for="f in statusFacets"
+            :key="f.label"
+            class="facet"
+            :class="{ off: f.hidden }"
+            :title="f.hidden ? 'Hidden — click to show' : 'Shown — click to hide'"
+            @click="toggleStatus(f.label)"
+          >
+            {{ f.label }} <span class="facet-n">{{ f.count }}</span>
+          </button>
+          <button v-if="hiddenCount" class="facet clear" @click="showAllStatuses">
+            show all
+          </button>
+        </div>
+      </details>
 
       <!-- NEW LOCAL TICKET -->
       <NCard v-if="showNew" class="new-form">
@@ -653,6 +754,10 @@ onUnmounted(() => window.clearInterval(pollTimer));
       <p v-if="loading" class="muted">Loading…</p>
       <p v-else-if="!tickets.length && !error" class="muted">
         No tickets yet — hit “New ticket”, or “Sync from Jira” for work tickets.
+      </p>
+      <p v-else-if="!visibleTickets.length && !error" class="muted">
+        All {{ tickets.length }} tickets are hidden by the status filter.
+        <a class="lnk" @click.prevent="showAllStatuses">Show all</a>
       </p>
 
       <div v-for="[project, items] in groups" :key="project" class="group">
@@ -1155,6 +1260,55 @@ onUnmounted(() => window.clearInterval(pollTimer));
 }
 .spacer {
   flex: 1;
+}
+
+.filter {
+  font-family: var(--font-mono);
+}
+.filter > summary {
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 2px;
+}
+.filter > summary:hover {
+  color: var(--text);
+}
+.filter-note {
+  color: var(--accent);
+  margin-left: 4px;
+}
+.facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+.facet {
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 9px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-out);
+  color: var(--text);
+  transition: opacity 120ms ease, box-shadow 120ms ease;
+}
+.facet.off {
+  box-shadow: var(--shadow-in);
+  opacity: 0.5;
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.facet-n {
+  color: var(--text-dim);
+}
+.facet.clear {
+  color: var(--accent);
 }
 
 .group {
