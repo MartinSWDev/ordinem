@@ -91,6 +91,30 @@ async def list_registered_repos(
         return await repos.list_repos(conn)
 
 
+@router.get("/repos/candidates", response_model=list[repos.RepoCandidate])
+async def list_repo_candidates(
+    settings: Settings = Depends(get_config),
+) -> list[repos.RepoCandidate]:
+    """Git checkouts found under repos_base_dir — the options for binding a
+    repo's local_path when the auto-guess didn't match."""
+    return repos.discover_local_repos(settings.repos_base_dir)
+
+
+@router.patch("/repos/{repo_id}", response_model=repos.RepoRow)
+async def set_repo_checkout(
+    repo_id: UUID,
+    body: schemas.SetRepoCheckoutRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> repos.RepoRow:
+    """Bind (or clear) a repo's local checkout — this is what makes its tickets
+    actionable, replacing the old manual `insert into repos`."""
+    async with pool.acquire() as conn:
+        repo = await repos.set_repo_local_path(conn, repo_id, body.local_path)
+    if repo is None:
+        raise HTTPException(status_code=404, detail="repo not found")
+    return repo
+
+
 @router.post("/local", response_model=schemas.TicketRow, status_code=201)
 async def create_local_ticket(
     body: schemas.CreateLocalTicketRequest,
@@ -129,12 +153,17 @@ async def ingest_ticket(
         raise HTTPException(status_code=502, detail=str(exc))
 
     async with pool.acquire() as conn:
-        # Link to a repo if the project is registered; otherwise ingest anyway
-        # (visible but unactionable until a repos row is seeded and re-synced).
-        repo = await repos.get_repo_by_project_key(conn, issue["project_key"])
+        # Auto-create the project's repo (guessing its checkout) and link it —
+        # no manual seeding. It's actionable once local_path resolves.
+        repo = await repos.ensure_repo_for_project(
+            conn,
+            project_key=issue["project_key"],
+            name=issue.get("project_name"),
+            base_dir=settings.repos_base_dir,
+        )
         ticket = await repository.upsert_ticket_from_jira(
             conn,
-            repo_id=repo.id if repo else None,
+            repo_id=repo.id,
             jira_project_key=issue["project_key"],
             jira_key=issue["jira_key"],
             title=issue["title"],
@@ -156,9 +185,11 @@ async def sync_my_tickets(
     grouped-by-project on the client via each ticket's jira_project_key.
 
     Default JQL is `assignee = currentUser() AND resolution = Unresolved`. This
-    is strictly read-only against Jira. Tickets in projects with no registered
-    repo are still ingested (visible, `actionable=false`) and their project keys
-    are returned in `unregistered_projects`.
+    is strictly read-only against Jira. A repo row is auto-created per project
+    (its checkout guessed from repos_base_dir); tickets whose repo has no
+    resolvable checkout yet are ingested and visible, `actionable=false`, and
+    their project keys are returned in `unregistered_projects` (i.e. "need a
+    checkout bound").
     """
     try:
         client = JiraClient(settings)
@@ -171,18 +202,26 @@ async def sync_my_tickets(
     except JiraError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
-    unregistered: set[str] = set()
+    needs_checkout: set[str] = set()
     async with pool.acquire() as conn:
-        repo_map = await repos.repo_id_by_project(conn)
         async with conn.transaction():
+            repo_cache: dict[str, repos.RepoRow] = {}
             for issue in issues:
                 project_key = issue["project_key"]
-                repo_id = repo_map.get(project_key)
-                if repo_id is None:
-                    unregistered.add(project_key)
+                repo = repo_cache.get(project_key)
+                if repo is None:
+                    repo = await repos.ensure_repo_for_project(
+                        conn,
+                        project_key=project_key,
+                        name=issue.get("project_name"),
+                        base_dir=settings.repos_base_dir,
+                    )
+                    repo_cache[project_key] = repo
+                if not repo.local_path:
+                    needs_checkout.add(project_key)
                 await repository.upsert_ticket_from_jira(
                     conn,
-                    repo_id=repo_id,
+                    repo_id=repo.id,
                     jira_project_key=project_key,
                     jira_key=issue["jira_key"],
                     title=issue["title"],
@@ -196,7 +235,7 @@ async def sync_my_tickets(
     return schemas.MyTicketsSyncResult(
         synced=len(issues),
         tickets=tickets,
-        unregistered_projects=sorted(unregistered),
+        unregistered_projects=sorted(needs_checkout),
     )
 
 

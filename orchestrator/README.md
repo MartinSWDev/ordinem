@@ -77,15 +77,14 @@ tests/               state-machine coverage
    uv run pytest
    ```
 
-## Seed data
+## Repos (no manual seeding)
 
-Ticket ingestion needs a `repos` row mapping the Jira project key to a git
-remote / compose path (section 11). Seed it once, e.g.:
-
-```sql
-insert into work.repos (name, jira_project_key, git_remote_url, docker_compose_path)
-values ('my-app', 'PROJ', 'git@github.com:me/my-app.git', '/Users/me/repos/my-app/docker-compose.yml');
-```
+A `repos` row is **auto-created from tickets** on sync — one per Jira project —
+so there's no `insert into repos` step. Each repo's local checkout is guessed as
+`REPOS_BASE_DIR/<name>` (default `~/Repos`); when the name doesn't match, the
+ticket view shows a picker listing the git repos found under `REPOS_BASE_DIR`,
+and you bind the checkout once (`PATCH /tickets/repos/{id}`). A ticket is
+`actionable` — dispatchable — only once its repo has a resolved checkout.
 
 ## Deployment & data residency
 

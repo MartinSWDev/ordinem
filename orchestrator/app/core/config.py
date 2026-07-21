@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     def local_proxy(self) -> str:
         return self.local_proxy_url or self.qwen_proxy_url
 
+    # Where local checkouts live. Repos auto-created from tickets guess their
+    # local_path as <repos_base_dir>/<name>; the picker lists git repos here.
+    repos_base_dir: str = "~/Repos"
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8787

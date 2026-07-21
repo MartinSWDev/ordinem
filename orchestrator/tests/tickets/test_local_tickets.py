@@ -25,9 +25,10 @@ async def test_create_local_ticket_has_no_jira_key(monkeypatch):
 
     class FakeConn:
         async def fetchrow(self, q, *args):
-            captured["sql"] = q
-            captured["args"] = args
-            return _row()
+            captured.setdefault("sqls", []).append(q)
+            # First call is the insert (returning *); create_local_ticket then
+            # re-fetches via get_ticket, whose row carries the joined checkout.
+            return _row(repo_local_path="/Users/me/Repos/app")
 
     t = await repository.create_local_ticket(
         FakeConn(), repo_id=uuid4(), title="Add rate limiting",
@@ -36,9 +37,9 @@ async def test_create_local_ticket_has_no_jira_key(monkeypatch):
     assert t.source == "local"
     assert t.jira_key is None
     assert t.jira is None
-    # still actionable: a local ticket always picks a repo up front
+    # actionable once the repo has a resolved checkout
     assert t.actionable is True
-    assert "'local'" in captured["sql"]
+    assert any("'local'" in sql for sql in captured["sqls"])
 
 
 def test_ticket_row_allows_missing_jira_key():

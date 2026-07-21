@@ -65,7 +65,9 @@ async def upsert_ticket_from_jira(
         jira,
         processing_instructions,
     )
-    return schemas.TicketRow(**dict(row))
+    ticket = await get_ticket(conn, row["id"])
+    assert ticket is not None
+    return ticket
 
 
 async def create_local_ticket(
@@ -89,7 +91,9 @@ async def create_local_ticket(
         description,
         processing_instructions,
     )
-    return schemas.TicketRow(**dict(row))
+    ticket = await get_ticket(conn, row["id"])
+    assert ticket is not None
+    return ticket
 
 
 async def refresh_ticket_jira(
@@ -116,7 +120,9 @@ async def refresh_ticket_jira(
         raw_jira,
         jira,
     )
-    return schemas.TicketRow(**dict(row))
+    ticket = await get_ticket(conn, row["id"])
+    assert ticket is not None
+    return ticket
 
 
 async def list_tickets(
@@ -140,10 +146,12 @@ async def list_tickets(
     # up so the list can flash tickets whose agent is waiting on the user.
     rows = await conn.fetch(
         f"""
-        select t.*, exists(
-          select 1 from subtasks s
-          where s.ticket_id = t.id and s.status = 'awaiting_input'
-        ) as awaiting_input
+        select t.*,
+          (select local_path from repos where id = t.repo_id) as repo_local_path,
+          exists(
+            select 1 from subtasks s
+            where s.ticket_id = t.id and s.status = 'awaiting_input'
+          ) as awaiting_input
         from tickets t {where} order by updated_at desc
         """,
         *args,
@@ -154,10 +162,12 @@ async def list_tickets(
 async def get_ticket(conn: asyncpg.Connection, ticket_id: UUID) -> schemas.TicketRow | None:
     row = await conn.fetchrow(
         """
-        select t.*, exists(
-          select 1 from subtasks s
-          where s.ticket_id = t.id and s.status = 'awaiting_input'
-        ) as awaiting_input
+        select t.*,
+          (select local_path from repos where id = t.repo_id) as repo_local_path,
+          exists(
+            select 1 from subtasks s
+            where s.ticket_id = t.id and s.status = 'awaiting_input'
+          ) as awaiting_input
         from tickets t where t.id = $1
         """,
         ticket_id,

@@ -7,6 +7,7 @@ import type {
   Conversation,
   PrDraft,
   ProposedSubtask,
+  RepoCandidate,
   RepoRef,
   SubtaskStatus,
   Ticket,
@@ -155,6 +156,39 @@ const newDescription = ref("");
 const newInstructions = ref("");
 const creating = ref(false);
 const newError = ref<string | null>(null);
+
+// --- binding a repo checkout -------------------------------------------------
+// Repos are auto-created from tickets; when the checkout can't be guessed by
+// name, the user picks it once from the git repos found under their repos dir.
+const repoCandidates = ref<RepoCandidate[]>([]);
+const selectedCheckout = ref("");
+const bindingCheckout = ref(false);
+
+async function loadRepoCandidates() {
+  try {
+    repoCandidates.value = await api.listRepoCandidates();
+    if (!selectedCheckout.value && repoCandidates.value.length) {
+      selectedCheckout.value = repoCandidates.value[0].path;
+    }
+  } catch {
+    // best-effort — the picker just shows empty
+  }
+}
+
+async function bindCheckout() {
+  const repoId = detail.value?.ticket.repo_id;
+  if (!repoId || !selectedCheckout.value) return;
+  bindingCheckout.value = true;
+  processError.value = null;
+  try {
+    await api.setRepoCheckout(repoId, selectedCheckout.value);
+    await refreshDetail();
+  } catch (e) {
+    processError.value = e instanceof ApiError ? e.message : String(e);
+  } finally {
+    bindingCheckout.value = false;
+  }
+}
 
 async function openNew() {
   showNew.value = true;
@@ -530,6 +564,7 @@ async function markOpened() {
 onMounted(() => {
   load();
   loadBackends();
+  loadRepoCandidates();
   pollTimer = window.setInterval(() => {
     if (detail.value && !detailLoading.value) refreshQuiet();
   }, POLL_MS);
@@ -620,8 +655,8 @@ onUnmounted(() => window.clearInterval(pollTimer));
           <div class="title">{{ t.title }}</div>
           <div class="row2">
             <NBadge v-if="priorityOf(t)">{{ priorityOf(t) }}</NBadge>
-            <span v-if="!t.actionable" class="lock" title="No registered repo — not actionable">
-              no repo
+            <span v-if="!t.actionable" class="lock" title="No checkout bound — open it to pick one">
+              no checkout
             </span>
           </div>
         </button>
@@ -831,11 +866,36 @@ onUnmounted(() => window.clearInterval(pollTimer));
           </p>
           <p v-if="processError" class="err">{{ processError }}</p>
         </div>
-        <div class="section" v-else>
-          <p class="muted">
-            This ticket's project has no registered repo, so it can't be dispatched.
-            Register a repo for <b>{{ detail.ticket.jira_project_key }}</b> and re-sync.
+        <!-- repo auto-linked, but no checkout resolved yet — pick it once -->
+        <div class="section" v-else-if="detail.ticket.repo_id">
+          <div class="label">Bind a checkout</div>
+          <p class="muted small">
+            Auto-linked to project <b>{{ detail.ticket.jira_project_key }}</b>, but
+            its local checkout wasn't found by name. Pick it once — agents run
+            there and worktrees branch off it.
           </p>
+          <div class="dispatch-row" v-if="repoCandidates.length">
+            <select v-model="selectedCheckout" class="input backend-select">
+              <option v-for="c in repoCandidates" :key="c.path" :value="c.path">
+                {{ c.name }}
+              </option>
+            </select>
+            <NButton
+              variant="primary"
+              :disabled="bindingCheckout || !selectedCheckout"
+              @click="bindCheckout"
+            >
+              {{ bindingCheckout ? "Binding…" : "Bind checkout" }}
+            </NButton>
+          </div>
+          <p v-else class="muted small">
+            No git checkouts found under your repos folder. Clone the repo there
+            (or set REPOS_BASE_DIR in the orchestrator), then reopen this ticket.
+          </p>
+          <p v-if="processError" class="err">{{ processError }}</p>
+        </div>
+        <div class="section" v-else>
+          <p class="muted">This ticket has no linked repo.</p>
         </div>
 
         <!-- PLAN (optional mini-tickets, folded away) -->

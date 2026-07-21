@@ -9,6 +9,7 @@ import type {
   NewLocalTicket,
   PrDraft,
   ProposedSubtask,
+  RepoCandidate,
   RepoRef,
   Subtask,
   Ticket,
@@ -31,6 +32,11 @@ export function useTickets(island: Island) {
       request<Ticket[]>("GET", `${project ? `?project=${encodeURIComponent(project)}` : ""}`),
     syncMyTickets: () => request<MyTicketsSyncResult>("POST", "/sync"),
     listRepos: () => request<RepoRef[]>("GET", "/repos"),
+    /** Git checkouts found under repos_base_dir — options for binding a repo. */
+    listRepoCandidates: () => request<RepoCandidate[]>("GET", "/repos/candidates"),
+    /** Bind a repo's checkout — what makes its tickets dispatchable. */
+    setRepoCheckout: (repoId: string, localPath: string | null) =>
+      request<RepoRef>("PATCH", `/repos/${repoId}`, { local_path: localPath }),
     /** Live-probed dispatch targets (claude / cursor / local) for the picker. */
     listBackends: () => request<AgentBackend[]>("GET", "/backends"),
     createLocalTicket: (t: NewLocalTicket) => request<Ticket>("POST", "/local", t),

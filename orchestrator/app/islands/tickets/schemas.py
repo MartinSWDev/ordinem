@@ -33,15 +33,18 @@ class TicketRow(BaseModel):
     # True while any subtask sits in awaiting_input — the agent asked the user
     # something and is parked until they reply. Drives the flashing badge.
     awaiting_input: bool = False
+    # The linked repo's checkout, joined in. None until a checkout is bound.
+    repo_local_path: str | None = None
     created_at: datetime
     updated_at: datetime
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def actionable(self) -> bool:
-        """A ticket can be dispatched to an agent only once its project has a
-        registered repo (branch/worktree/docker all hang off the repo)."""
-        return self.repo_id is not None
+        """A ticket is dispatchable only once its repo has a resolved checkout
+        (agents run there; worktrees branch off it). The repo row is
+        auto-created from the ticket, so the gate is the checkout, not the row."""
+        return self.repo_id is not None and self.repo_local_path is not None
 
 
 class SubtaskRow(BaseModel):
@@ -146,6 +149,14 @@ class DispatchPlanRequest(BaseModel):
     backend: str = Field(
         "claude",
         description="Where the agents run: claude | cursor | local (see GET /tickets/backends).",
+    )
+
+
+class SetRepoCheckoutRequest(BaseModel):
+    """PATCH /tickets/repos/:id — bind (or clear) a repo's local checkout."""
+
+    local_path: str | None = Field(
+        None, description="Absolute path to the git checkout; null clears it."
     )
 
 

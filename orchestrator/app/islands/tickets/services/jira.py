@@ -205,9 +205,11 @@ class JiraClient:
         project_key = (fields.get("project") or {}).get("key") or (
             jira_key.split("-")[0] if "-" in jira_key else jira_key
         )
+        project_name = (fields.get("project") or {}).get("name")
         return {
             "jira_key": jira_key,
             "project_key": project_key,
+            "project_name": project_name,
             "title": fields.get("summary") or jira_key,
             "description": _adf_to_text(fields.get("description")).strip() or None,
             "jira": self._rich_jira(raw, jira_key),

@@ -90,9 +90,18 @@ export interface Ticket {
   status: TicketStatus;
   /** An agent asked you something and is waiting — drives the flashing badge. */
   awaiting_input: boolean;
+  /** The linked repo's checkout, or null until you bind one. */
+  repo_local_path: string | null;
+  /** Dispatchable: repo linked AND a checkout resolved. */
   actionable: boolean;
   created_at: string;
   updated_at: string;
+}
+
+/** A git checkout found under repos_base_dir — an option for binding a repo. */
+export interface RepoCandidate {
+  name: string;
+  path: string;
 }
 
 /** One turn in the agent <-> you conversation. */
